@@ -1,0 +1,167 @@
+service: selfie2anime-image-handler
+frameworkVersion: '^4.17.2'
+
+plugins:
+  - serverless-python-requirements
+  - serverless-domain-manager
+  - serverless-associate-waf
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    noDeploy: []
+  associateWaf:
+    name: ${self:custom.environment.WAF_NAME}
+    version: V2
+  customDomain:
+    domainName: api.selfie2anime.com
+    basePath: analysis
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+    certificateRegion: us-east-1
+  environment:
+    BUCKET_NAME: selfie2anime
+    QUEUE_NAME: selfie2anime
+    DLQ_NAME: selfie2anime-dlq
+    DYNAMO_NAME: selfie2anime
+    CLOUDFRONT_DIST: E8Q9SF5HYK3HW
+    WAF_NAME: selfie2anime
+
+package:
+  exclude:
+    - .venv/**
+    - node_modules/**
+
+provider:
+  name: aws
+  runtime: python3.12
+  lambdaHashingVersion: 20201221
+  stage: dev
+  tracing:
+    apiGateway: false
+    lambda: false
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+       - s3:PutObject
+       - s3:PutObjectAcl
+       - s3:GetObject
+       - s3:DeleteObject
+      Resource:
+        - "arn:aws:s3:::${self:custom.environment.BUCKET_NAME}/*"
+    - Effect: Allow
+      Action:
+       - cloudfront:CreateInvalidation
+      Resource: "*"
+    - Effect: Allow
+      Action:
+       - sqs:SendMessage
+       - sqs:GetQueueUrl
+      Resource:
+        - "*"
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:PutItem
+        - dynamodb:Query
+      Resource:
+        - "Fn::GetAtt": [ DynamoDbselfie2anime, Arn ]
+        - "Fn::Join": [ "/", [ "Fn::GetAtt": [ DynamoDbselfie2anime, Arn ], "index", "key-index" ]]
+  environment:
+    BUCKET_NAME: ${self:custom.environment.BUCKET_NAME}
+    QUEUE_NAME: ${self:custom.environment.QUEUE_NAME}
+    CLOUDFRONT_DIST: ${self:custom.environment.CLOUDFRONT_DIST}
+    DYNAMO_TABLE: ${self:custom.environment.DYNAMO_NAME}
+
+functions:
+  selfie:
+    handler: handler.selfie
+    events:
+      - http:
+          path: selfie
+          method: post
+          cors: true
+  count:
+    handler: handler.count
+    events:
+      - http:
+          path: count
+          method: get
+          cors: true
+  me:
+    handler: sharer.me
+    events:
+      - http:
+          path: me
+          method: get
+          request:
+            parameters:
+              querystrings:
+                uuid: true
+  delete:
+    handler: deleter.delete
+    events:
+      - http:
+          path: delete
+          method: get
+          request:
+            parameters:
+              querystrings:
+                uuid: true
+                key: true
+
+resources:
+  Resources:
+    S3Bucketselfie2anime:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.environment.BUCKET_NAME}
+    Queueselfie2anime:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.environment.QUEUE_NAME}
+    Queueselfie2animedlq:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.environment.DLQ_NAME}
+    DynamoDbselfie2anime:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.environment.DYNAMO_NAME}
+        AttributeDefinitions:
+          - AttributeName: timestamp
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: timestamp
+            KeyType: HASH
+          - AttributeName: email
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+    WAFv2WebACL:
+        Type: AWS::WAFv2::WebACL
+        Properties:
+            Name: ${self:custom.environment.WAF_NAME}
+            Description: Selfie2Anime Rate Limits
+            DefaultAction:
+                Allow: {}
+            VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: rate-limits
+            Scope: "REGIONAL"
+            Rules:
+              -
+                Name: rate-limiter
+                Priority: 0
+                Action:
+                    Block: {}
+                Statement:
+                    RateBasedStatement:
+                        Limit: 100
+                        AggregateKeyType: IP
+                VisibilityConfig:
+                    SampledRequestsEnabled: true
+                    CloudWatchMetricsEnabled: true
+                    MetricName: rate-limiter
