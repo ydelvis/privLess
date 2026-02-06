@@ -1,0 +1,65 @@
+# =========================
+# CodeQL Project .gitignore
+# =========================
+
+# === CodeQL Databases ===
+# These directories are generated when you run `codeql database create`
+*.db*
+*/codeql-database*/
+codeql-database/
+database/
+databases/
+*/db-*/
+
+# === Query Results and SARIF Outputs ===
+*.sarif
+#*.csv
+*.bqrs
+#*.json
+*.log
+*.tmp
+*.zip
+
+# === CodeQL Query Output Directories ===
+results/
+output/
+out/
+logs/
+tmp/
+temp/
+
+# === VS Code / Editor Files ===
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*~
+
+# === Python Virtual Environments (if used for automation) ===
+.venv/
+venv/
+env/
+
+# === Node / JS Dependencies (if using JS for analysis) ===
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# === OS-generated files ===
+.DS_Store
+Thumbs.db
+
+# === Build and Misc ===
+dist/
+build/
+.cache/
+coverage/
+
+# === sample projects ===
+test-projects/
+grasp/
+
+*.pyc
+__pycache__/
+
+00_privLess/
