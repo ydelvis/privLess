@@ -1,0 +1,191 @@
+service: ApplicationCostMonitoring
+
+plugins:
+  - serverless-python-requirements
+  - serverless-iam-roles-per-function
+  - serverless-pseudo-parameters
+  - serverless-sam
+
+custom:
+  stage: "${opt:stage, env:SLS_STAGE, 'dev'}"
+  profile: "${opt:aws-profile, env:AWS_PROFILE, env:AWS_DEFAULT_PROFILE, 'default'}"
+  log_level: "${env:LOG_LEVEL, 'INFO'}"
+  billing_bucket_name: 'applicationcostmonitoring-${self:provider.stage}-billing-reports-#{AWS::AccountId}'
+
+  cf-parameters:
+    # Changing tags on billing reports will alter the report schema which can:
+    # - break downstream analysis systems dependent on the schema.
+    # - result in item duplication as AWS will generate a new line item ID and
+    #   this system has to continually reprocess 1st of month on every run.
+    # - make tracking an item across the month difficult due to change in ID.
+    #
+    # Options:
+    # - ERROR: Error out line item writer. Must remove schema state file or
+    #   remove tags to continue processing.
+    # - CONTINUE: Just continue processing.
+    # - RECONCILE: Reprocess the entire report.
+    schema_change_handling: "${env:SCHEMA_CHANGE_HANDLING, 'CONTINUE'}"
+
+provider:
+  name: aws
+  profile: ${self:custom.profile}
+  stage: ${self:custom.stage}
+  stackTags:
+    x-service: ${self:service}
+    x-stack: ${self:service}-${self:provider.stage}
+    x-app: ApplicationCostMonitoring
+
+functions:
+  Publish:
+    handler: handlers/line-item-publisher.handler
+    description: "Ingest an S3 object and publish line items."
+    runtime: python3.6
+    memorySize: 512
+    timeout: 300
+    environment:
+      LOG_LEVEL: ${self:custom.log_level}
+      AWS_SNS_TOPIC:
+        Ref: BillingRecordsSnsTopic
+      SCHEMA_CHANGE_HANDLING:
+        Ref: SchemaChangeHandling
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "s3:ListBucket"
+        Resource: "arn:aws:s3:::${self:custom.billing_bucket_name}"
+      - Effect: "Allow"
+        Action:
+          - "S3:GetObject"
+          - "S3:PutObject"
+        Resource: "arn:aws:s3:::${self:custom.billing_bucket_name}/*"
+      - Effect: "Allow"
+        Action:
+          - "SNS:Publish"
+        Resource:
+          - Ref: BillingRecordsSnsTopic
+      - Effect: "Allow"
+        Action:
+          - "Lambda:InvokeFunction"
+        Resource: "arn:aws:lambda:${self:provider.region}:#{AWS::AccountId}:function:${self:service}-${self:provider.stage}-Publish"
+    events:
+      - s3:
+          # NOTE: Need to use string here.
+          bucket: '${self:custom.billing_bucket_name}'
+          event: "s3:ObjectCreated:Put"
+          rules:
+            - suffix: ".gz"
+      - s3:
+          # NOTE: Need to use string here.
+          bucket: '${self:custom.billing_bucket_name}'
+          event: "s3:ObjectCreated:Put"
+          rules:
+            - suffix: ".zip"
+
+
+resources:
+  Parameters:
+    SchemaChangeHandling:
+      Type: String
+      Description: 'Behavior by Publish function on report schema change.'
+      Default: '${self:custom.cf-parameters.schema_change_handling}'
+
+  Resources:
+    BillingRecordsSnsTopic:
+      Type: "AWS::SNS::Topic"
+
+    SnsTopicPolicy:
+      Type: "AWS::SNS::TopicPolicy"
+      Properties:
+        PolicyDocument: {
+          "Version": "2008-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "*"
+              },
+              "Action": [
+                "SNS:GetTopicAttributes",
+                "SNS:SetTopicAttributes",
+                "SNS:AddPermission",
+                "SNS:RemovePermission",
+                "SNS:DeleteTopic",
+                "SNS:Subscribe",
+                "SNS:ListSubscriptionsByTopic",
+                "SNS:Publish",
+                "SNS:Receive"
+              ],
+              "Resource": {
+                "Fn::Join": [
+                  ":",
+                  [
+                    "arn:aws:sns",
+                    Ref: "AWS::Region",
+                    Ref: "AWS::AccountId",
+                    Fn::GetAtt: ["BillingRecordsSnsTopic", "TopicName"]
+                  ]
+                ]
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceOwner": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+        Topics:
+          - Ref: BillingRecordsSnsTopic
+
+    BillingS3BucketPolicy:
+      Type: "AWS::S3::BucketPolicy"
+      Properties:
+        Bucket:
+          Ref: "S3BucketApplicationcostmonitoring${self:provider.stage}billingreportsAWSAccountId"
+        PolicyDocument: {
+          "Version": "2008-10-17",
+          "Id": "Policy1335892530063",
+          "Statement": [
+            {
+              "Sid": "Stmt1335892150622",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::386209384616:root"
+              },
+              "Action": [
+                "s3:GetBucketAcl",
+                "s3:GetBucketPolicy"
+              ],
+              "Resource": { "Fn::GetAtt": ["S3BucketApplicationcostmonitoring${self:provider.stage}billingreportsAWSAccountId", "Arn"] }
+            },
+            {
+              "Sid": "Stmt1335892526596",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::386209384616:root"
+              },
+              "Action": [
+                "s3:PutObject"
+              ],
+              "Resource": { "Fn::Join": ["/", [{ "Fn::GetAtt": ["S3BucketApplicationcostmonitoring${self:provider.stage}billingreportsAWSAccountId", "Arn"] }, "*"]] }
+            }
+          ]
+        }
+
+
+  Outputs:
+    BillingReportS3BucketName:
+      Description: "S3 bucket where billing reports are delivered to."
+      Value:
+        Ref: "S3BucketApplicationcostmonitoring${self:provider.stage}billingreportsAWSAccountId"
+      Export:
+        Name: "${self:service}-${self:provider.stage}-BillingReportS3BucketName"
+    BillingRecordsSnsTopicArn:
+      Description: "SNS topic ARN where billing records are published to."
+      Value:
+        Ref: BillingRecordsSnsTopic
+      Export:
+        Name: "${self:service}-${self:provider.stage}-BillingRecordsSnsTopicArn"
+

@@ -1,0 +1,81 @@
+service: sample-dynamo
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-webpack
+  - serverless-dynamodb-local
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  memorySize: 1024 # optional, in MB, default is 1024
+  timeout: 10 # optional, in seconds, default is 6
+
+  stage: ${env:SLS_AWS_STAGE}
+  region: ${env:SLS_AWS_REGION}
+
+  environment:
+      PLACE: "holder"
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:UpdateItem
+        - dynamodb:Query
+        - dynamodb:PutItem
+      Resource:
+        Fn::GetAtt: [ slsSampleDynamo, Arn ]
+
+package:
+  individually: true
+  exclude:
+    - ".*/**"
+
+functions:
+  sample-dynamo:
+    handler: src/index.handler
+    environment:
+      slsSampleDynamo:
+        Ref: slsSampleDynamo
+
+    package:
+      include:
+        - src/**
+
+    events:
+      - http:
+          path: sample-dynamo/{id}
+          method: get
+
+resources:
+  Resources:
+    slsSampleDynamo:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: slsSampleDynamo
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+
+custom:
+  webpack:
+    webpackConfig: '../../../webpack.config.js'
+
+  dynamodb:
+    start:
+      seed: true
+
+    seed:
+      testdata:
+        sources:
+          - table: slsSampleDynamo
+            sources: [./slsSampleDynamo.json]

@@ -1,0 +1,77 @@
+{
+  "name": "sls-node-ts",
+  "version": "1.1.2",
+  "description": "Serverless Node.js TypeScript starter to write serverless applications by using the Serverless Framework in Node.js and TypeScript",
+  "main": "src/handler.ts",
+  "scripts": {
+    "lint": "tsc --noEmit && eslint \"**/*.{js,ts}\"",
+    "offline": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js offline start --noAuth --stage development",
+    "package": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js package --stage development",
+    "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest --runInBand --forceExit --verbose",
+    "test:coverage": "node --max-old-space-size=4096 node_modules/jest/bin/jest --runInBand --forceExit --verbose --coverage",
+    "watch-test": "node --max-old-space-size=4096 node_modules/jest/bin/jest --runInBand --verbose --watchAll",
+    "deploy-local": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js deploy --stage local --region us-east-1 --verbose --force",
+    "deploy-staging": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js deploy --stage staging --region eu-west-1 --verbose --force",
+    "deploy-production": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js deploy --stage production --region eu-west-1 --verbose --force",
+    "remove-local": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js remove --stage local --region eu-west-1",
+    "remove-staging": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js remove --stage staging --region eu-west-1",
+    "remove-production": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js remove --stage production --region eu-west-1",
+    "invoke-localstack-getUsers": "node --max-old-space-size=4096 node_modules/serverless/bin/serverless.js invoke --stage local --function getUsers --verbose --log"
+  },
+  "jest": {
+    "transform": {
+      ".(ts|tsx)": "ts-jest"
+    },
+    "testRegex": "(/__tests__/.*|\\.(test))\\.(ts|tsx|js)$",
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "json"
+    ],
+    "testEnvironment": "node",
+    "clearMocks": true
+  },
+  "dependencies": {
+    "@micheleangioni/node-messagebrokers": "^0.9.4",
+    "@graphql-tools/schema": "^8.3.6",
+    "@graphql-tools/utils": "^8.6.5",
+    "@types/validator": "^13.7.2",
+    "apollo-server-lambda": "^3.6.7",
+    "dayjs": "^1.11.0",
+    "deepmerge": "^4.2.2",
+    "dynamoose": "^2.8.5",
+    "graphql": "^16.3.0",
+    "mongoose": "^6.3.2",
+    "source-map-support": "^0.5.21",
+    "uuid": "^8.3.2",
+    "validator": "^13.7.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.95",
+    "@types/jest": "^27.4.1",
+    "@types/node": "^14.18.16",
+    "@types/uuid": "^8.3.4",
+    "@typescript-eslint/eslint-plugin": "^5.17.0",
+    "@typescript-eslint/parser": "^5.17.0",
+    "bufferutil": "^4.0.6",
+    "eslint": "^8.12.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "eslint-plugin-sort-class-members": "^1.14.1",
+    "jest": "^28.1.0",
+    "serverless": "^3.16.0",
+    "serverless-deployment-bucket": "^1.6.0",
+    "serverless-localstack": "^0.4.35",
+    "serverless-offline": "^8.7.0",
+    "serverless-plugin-typescript": "^2.1.2",
+    "ts-jest": "^28.0.1",
+    "ts-node": "^10.7.0",
+    "typescript": "^4.6.3",
+    "utf-8-validate": "^5.0.9"
+  },
+  "author": {
+    "name": "Michele Angioni",
+    "email": "michele.angioni@gmail.com"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,23 @@
+# Files
+.env
+.dccache
+.DS_Store
+__quicktype*
+
+# Folders
+node_modules/
+lib/
+docs/
+coverage/
+jest-coverage/
+.webpack/
+.esbuild/
+.serverless/
+build/
+typedoc-docs/*
+
+# Diagrams
+diagrams/*.bkp
+diagrams/*.bak
+
+*-error.log

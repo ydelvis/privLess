@@ -1,0 +1,32 @@
+participant Stepfunctions
+participant Bamboo Rest API
+participant Teams incoming webhook
+participant Chatops channel
+actor User
+
+Stepfunctions->Stepfunctions: delay the checking
+loop schedule with backoff
+  opt max attempts not reached
+    Stepfunctions->Bamboo Rest API: GET job status
+    activate Bamboo Rest API
+    Bamboo Rest API-->Stepfunctions: job result
+    deactivate Bamboo Rest API
+    opt job is finished
+        Stepfunctions->Teams incoming webhook: POST job result
+        activate Teams incoming webhook
+        Teams incoming webhook->Chatops channel: job result
+        Chatops channel->User: job result
+        deactivate Teams incoming webhook
+        Stepfunctions->Stepfunctions: end()
+    else
+        Stepfunctions->Stepfunctions: waitForRetry()
+    end
+  else
+    Stepfunctions->Teams incoming webhook: POST hanging job alert
+    activate Teams incoming webhook
+    Teams incoming webhook->Chatops channel: hanging job alert
+    Chatops channel->User: hanging job alert
+    deactivate Teams incoming webhook
+    Stepfunctions->Stepfunctions: end()
+  end
+end

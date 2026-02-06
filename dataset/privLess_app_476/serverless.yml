@@ -1,0 +1,92 @@
+service: serverless-golang-todoapp
+
+package:
+  artifact: package.zip
+
+custom:
+  currentStage: ${opt:stage, self:provider.stage}
+
+provider:
+  name: aws
+  runtime: python2.7
+  stage: ${env:STAGE}
+  region: ${env:AWS_DEFAULT_REGION}
+  iamRoleStatements:
+  - Effect: Allow
+    Action:
+      - dynamodb:DescribeTable
+      - dynamodb:Query
+      - dynamodb:Scan
+      - dynamodb:GetItem
+      - dynamodb:PutItem
+      - dynamodb:UpdateItem
+      - dynamodb:DeleteItem
+    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.currentStage}-*
+
+resources: ${file(resources.yml)}
+
+functions:
+  ping:
+    handler: handler.Ping
+    events:
+      - http:
+          path: ping
+          method: get
+  echo:
+    handler: handler.Echo
+    events:
+      - http:
+          path: echo
+          method: post
+  createTodos:
+    handler: handler.CreateTodo
+    environment:
+      STAGE: ${self:custom.currentStage}
+    events:
+      - http:
+          path: todos
+          method: post
+  deleteTodo:
+    handler: handler.DeleteTodo
+    environment:
+      STAGE: ${self:custom.currentStage}
+    events:
+      - http:
+          path: todos/{id}
+          method: delete
+          request:
+            parameters:
+              paths:
+                id: true
+  fetchAllTodo:
+    handler: handler.FetchAllTodo
+    environment:
+      STAGE: ${self:custom.currentStage}
+    events:
+      - http:
+          path: todos
+          method: get
+  fetchSingleTodo:
+    handler: handler.FetchSingleTodo
+    environment:
+      STAGE: ${self:custom.currentStage}
+    events:
+      - http:
+          path: todos/{id}
+          method: get
+          request:
+            parameters:
+              paths:
+                id: true
+  updateTodo:
+    handler: handler.UpdateSingleTodo
+    environment:
+      STAGE: ${self:custom.currentStage}
+    events:
+      - http:
+          path: todos/{id}
+          method: patch
+          request:
+            parameters:
+              paths:
+                id: true

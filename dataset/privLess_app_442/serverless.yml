@@ -1,0 +1,54 @@
+service: serverless-image-proxy
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  memorySize: 1536
+  region: ${env:AWS_REGION}
+  deploymentBucket: serverless-deployments-${env:AWS_REGION}-${env:AWS_ACCOUNT_ID}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+      Resource: "arn:aws:s3:::files.graph.cool/*"
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-apigwy-binary
+
+package:
+#  exclude:
+#    - node_modules/**
+#  include:
+#    - node_modules/sharp/**
+#    - node_modules/lambda-helpers/**
+  excludeDevDependencies: false
+
+functions:
+
+  Resize:
+    handler: src/handler.default
+    events:
+      - http:
+          path: '{proxy+}'
+          method: get
+          contentHandling: CONVERT_TO_BINARY
+    environment:
+      BUCKET_NAME: 'files.graph.cool'
+      GRAPHCOOL_ENDPOINT: ${env:GRAPHCOOL_ENDPOINT}
+      GRAPHCOOL_PAT: ${env:GRAPHCOOL_PAT}
+
+resources:
+  Resources:
+
+    ResizeLogGroup:
+      Properties:
+        RetentionInDays: 7
+
+    pathmapping:
+      Type: AWS::ApiGateway::BasePathMapping
+      Properties:
+        DomainName: 'images-v1.graph.cool'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Stage: dev

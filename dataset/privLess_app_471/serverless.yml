@@ -1,0 +1,74 @@
+service:
+  name: odin
+
+plugins:
+  - serverless-webpack
+  - serverless-cloudformation-resource-counter
+  - serverless-prune-versions
+  - serverless-plugin-thundra
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: ${self:custom.stage}
+  environment:
+    STAGE: ${self:custom.stage}
+    NODE_ENV: PRODUCTION
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    LAMBDA_WRAPPER_LOG: true
+    thundra_apiKey: ${opt:thundra, env:THUNDRA_TOKEN}
+    DELETE_STACK_TOPIC: !Join
+      - ':'
+      - - arn:aws:sns
+        - !Ref AWS::Region
+        - !Ref AWS::AccountId
+        - delete-stack-${opt:stage, self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Resource: '*'
+      Action: '*'
+
+custom:
+  odin: ${file(./odin.yml)}
+  stage: ${opt:stage, env:STAGE, 'local'}
+  # https://github.com/manwaring/serverless-prune-versions
+  prune:
+    automatic: true
+    number: 3
+  # https://github.com/drexler/serverless-cloudformation-resource-counter
+  warningThreshold: 100
+  # https://github.com/serverless-heaven/serverless-webpack
+  webpack:
+    includeModules: true
+    excludeFiles: src/**/*.test.[t|j]s
+
+functions:
+  check-stacks:
+    handler: src/check-stacks/check.handler
+    events:
+      - schedule:
+          rate: ${self:custom.odin.schedule.daily.rate}
+          input: '${file(./odin-config-loader.js):daily}'
+      - schedule:
+          rate: ${self:custom.odin.schedule.hourly.rate}
+          input: '${file(./odin-config-loader.js):hourly}'
+
+  delete-stack:
+    handler: src/delete-stack/delete.handler
+    events:
+      - sns: delete-stack-${opt:stage, self:provider.stage}
+
+resources:
+  Description: Automated service for destroying temporary stacks (retains production, qa, development, and automation stacks)
+
+  Outputs:
+    DeleteStackSNS:
+      Description: ARN of the ${opt:stage, self:provider.stage} stage SNS topic for stack deletion
+      Value:
+        Fn::Join:
+          - ':'
+          - - arn:aws:sns:us-east-1
+            - Ref: AWS::AccountId
+            - delete-stack-${opt:stage, self:provider.stage}
+      Export:
+        Name: odin-${opt:stage, self:provider.stage}-delete-stack-sns

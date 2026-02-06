@@ -1,0 +1,75 @@
+service: tracing
+
+package:
+  individually: true
+
+plugins:
+  - serverless-esbuild
+    
+provider:
+  name: aws
+  runtime: nodejs16.x
+  timeout: 10
+  region: eu-west-2
+  architecture: arm64
+  versionFunctions: false
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: 'dynamodb:updateItem'
+          Resource: !GetAtt DB.Arn
+        - Effect: Allow
+          Action: 'sns:publish'
+          Resource: '*'
+        - Effect: Allow
+          Action: 'events:PutEvents'
+          Resource: '*'
+  tags:
+    'baselime:tracing': auto
+  environment:
+    AWS_SDK_INTERNALS: false
+    BASELIME_REQUEST_CAPTURE: true
+    API_URL: !GetAtt HttpApi.ApiEndpoint
+functions:
+  hello:
+    handler: src/main.handler
+    events:
+      - schedule: rate(10 minutes)
+    environment:
+      API_URL: !GetAtt HttpApi.ApiEndpoint
+  wait-for-it:
+    handler: src/eventbridge.handler
+    events:
+      - eventBridge:
+          pattern:
+            source:
+              - baselime
+  api:
+    handler: src/api.handler
+    events:
+      - httpApi:
+          method: get
+          path: /hello
+    environment:
+      DB_NAME: !Ref DB
+      TOPIC_ARN: !Ref SNSTopicDispatch
+  dispatcher:
+    handler: src/dispatcher.handler
+    events:
+      - sns: dispatch
+    
+
+resources:
+  Resources:
+    DB:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+

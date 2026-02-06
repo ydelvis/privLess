@@ -1,0 +1,23 @@
+# package directories
+node_modules
+
+# Serverless directories
+.serverless
+
+# Webpack directories
+.webpack
+
+# IntellijIDEA cofig files
+.idea
+
+# build files
+lib
+
+package-lock.json
+
+.DS_Store
+
+# unit test files
+coverage
+
+

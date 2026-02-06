@@ -1,0 +1,116 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+model Publication{
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  workspace String
+  name String
+  hosts PublicationHost[]
+  // public image
+  logo String?
+  // public image
+  cover String?
+  slug String @unique @default(cuid())
+  createdAt DateTime @default(now())
+  posts Post[]
+  // featuredPosts Post[] @relation(fields: [featuredPostIds], references: [id], name: "a")
+
+  // publication slug must be unique per workspace
+  @@unique([slug, workspace])
+}
+
+type PublicationHost{
+  // optional display name (e.g. blog)
+  name String?
+  // e.g https://blog.grida.co/posts
+  homepage String
+  // e.g blog.grida.co
+  // host String
+  // e.g /posts/:id - https://blog.grida.co/posts/:id
+  pattern String @default("/:id")
+}
+
+model Post {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  title  String
+  displayTitle String?
+  summary String?
+  thumbnail String?
+  body PostBody
+  cover String?
+  tags String[]
+  category String?
+  slug String? @default(cuid())
+  visibility Visibility @default(private)
+  scheduledAt DateTime?
+  language String?
+  author String? @db.ObjectId
+  isDraft Boolean
+  isListed Boolean @default(false)
+  draft EditingPost?
+  assets PostAsset[]
+
+  // reading time estimated on serverside based on https://github.com/ngryman/reading-time
+  readingTime Int?
+  createdAt DateTime @default(now())
+  lastEditAt DateTime? @default(now())
+  postedAt DateTime?
+  publication  Publication  @relation(fields: [publicationId], references: [id])
+  publicationId String @db.ObjectId
+
+  // slugs are unique in publication
+  @@unique([slug, publicationId])
+}
+
+// Editing post is used when post is being updated after it has been published
+// once posted / updated, this object will be removed from parent.
+type EditingPost{
+  title  String
+  displayTitle String
+  summary String
+  body PostBody
+  cover String?
+  // thumbnail - editing thumbnail will be affected to production immediately
+  // tags - editing tags will be affected to production immediately
+}
+
+type PostBody{
+  html String?
+}
+
+// private comments for editors
+type PrivateNote{
+  body String
+  replies String
+}
+
+model PostAsset{
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  post Post @relation(fields: [postId], references: [id])
+  postId String @db.ObjectId
+  // rather if the asset is removable permanently. - true if the asset is on drafting post.
+  removalble Boolean @default(true)
+  createdAt DateTime @default(now())
+  // absolute path of the asset
+  path String @unique
+  // full url to the asset (s3)
+  url String @unique
+  // name of the asset e.g. image-001.png
+  key String
+}
+
+enum Visibility{
+  public
+  private
+  password_protected
+}

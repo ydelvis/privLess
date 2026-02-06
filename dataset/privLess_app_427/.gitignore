@@ -1,0 +1,16 @@
+# package directories
+node_modules
+jspm_packages
+
+# Serverless directories
+.serverless
+
+#dynamodb offline relate files
+.dynamodb
+
+
+# test coveragr files
+coverage
+
+# env files 
+.env*

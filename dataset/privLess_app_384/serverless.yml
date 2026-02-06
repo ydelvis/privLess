@@ -1,0 +1,36 @@
+service: aws-nodejs-typescript-sqs-example
+
+plugins:
+  - serverless-webpack
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  memorySize: 128 # optional, in MB, default is 1024
+  timeout: 10 # optional, in seconds, default is 6
+  stage: ${opt:stage, 'dev'}
+  region: [aws-region]
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - sqs:ReceiveMessage
+      Resource:
+        - ${self:custom.sqs}
+
+functions:
+  receiver:
+    handler: handler.processor
+    reservedConcurrency: 5 # default, change according to your needs
+    layers: # AWS Powertools layer for EMF metrics
+      - arn:aws:lambda:eu-west-1:094274105915:layer:AWSLambdaPowertoolsTypeScript:7
+    events:
+      - sqs: ${self:custom.sqs}
+
+custom:
+  sqs: <sqs-arn> # set your sqs arn here
+  stages:
+    - dev
+    - test
+    - acc
+    - prod
+

@@ -1,0 +1,28 @@
+# Distribution / packaging
+.coverage
+.floo
+.idea
+.Python
+.requirements
+.npmignore
+ardenv/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.pyc
+*.egg
+node_modules/
+
+# Serverless directories
+.serverless

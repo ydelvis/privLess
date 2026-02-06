@@ -1,0 +1,21 @@
+{
+  "name": "play-proxy",
+  "version": "1.0.0",
+  "description": "Docker Proxy",
+  "main": "index.js",
+  "private": "true",
+  "scripts": {
+    "test": "xo&& bash ./test/test.sh"
+  },
+  "author": "Phodal HUANG <h@phodal.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "xo": "^0.18.2"
+  },
+  "xo": {
+    "space": true
+  },
+  "dependencies": {
+    "http-proxy": "^1.17.0"
+  }
+}

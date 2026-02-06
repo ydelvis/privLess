@@ -1,0 +1,16 @@
+{
+  "name": "keyvalue",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "serverless-domain-manager": "^2.2.2",
+    "serverless-dynamodb-autoscaling": "^0.6.2"
+  },
+  "description": ""
+}

@@ -1,0 +1,17 @@
+{
+  "name": "serverless-kinesis-firehose",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "ssh://git@github.com/otofu-square/serverless-kinesis-firehose",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/aws-lambda": "0.0.30",
+    "@types/node": "9.3.0",
+    "@types/ramda": "0.25.16",
+    "aws-sdk": "2.188.0",
+    "serverless-plugin-typescript": "1.1.5"
+  },
+  "dependencies": {
+    "ramda": "^0.25.0"
+  }
+}

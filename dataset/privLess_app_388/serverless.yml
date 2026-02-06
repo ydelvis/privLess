@@ -1,0 +1,173 @@
+service: prototype
+
+plugins:
+  - serverless-offline
+  - serverless-dynamodb-local
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  region: ap-northeast-1
+  stage: ${env:DEPLOY_STAGE}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: 'arn:aws:dynamodb:ap-northeast-1:*:*'
+  environment:
+    DEPLOY_STAGE: ${env:DEPLOY_STAGE}
+    CLIENTS_TABLE_NAME: ${env:DEPLOY_STAGE}_Clients
+    USERS_TABLE_NAME: ${env:DEPLOY_STAGE}_Users
+    RESOURCES_TABLE_NAME: ${env:DEPLOY_STAGE}_Resources
+    AUTHLETE_API_KEY: ${env:AUTHLETE_API_KEY}
+    AUTHLETE_API_SECRET: ${env:AUTHLETE_API_SECRET}
+
+package:
+  exclude:
+    - .git/**
+    - .nyc_output/**
+    - coverage/**
+    - .idea/**
+    - src/**
+    - config/**
+
+custom:
+  authorizer:
+    name: authorization
+    type: 'TOKEN'
+    identitySource: method.request.header.Authorization
+    resultTtlInSeconds: 0
+  dynamodb:
+    start:
+      port: 8000
+      inMemory: true
+      migration: true
+    migration:
+      dir: ./config/migrations
+
+functions:
+  findClient:
+    handler: build/functions/client.find
+    events:
+      - http:
+          path: clients/{id}
+          method: get
+          authorizer: ${self:custom.authorizer}
+          cors: true
+  createUser:
+    handler: build/functions/user.create
+    events:
+      - http:
+          path: users
+          method: post
+          authorizer: ${self:custom.authorizer}
+          cors: true
+  findUser:
+    handler: build/functions/user.find
+    events:
+      - http:
+          path: users/{id}
+          method: get
+          authorizer: ${self:custom.authorizer}
+          cors: true
+  createResource:
+    handler: build/functions/resource.create
+    events:
+      - http:
+          path: resources
+          method: post
+          cors: true
+  findResource:
+    handler: build/functions/resource.find
+    events:
+      - http:
+          path: resources/{id}
+          method: get
+          cors: true
+  destroyResource:
+    handler: build/functions/resource.destroy
+    events:
+      - http:
+          path: resources/{id}
+          method: delete
+          cors: true
+  issueTokenFromCode:
+    handler: build/functions/token.issueTokenFromCode
+    events:
+      - http:
+          path: tokens/code
+          method: post
+          cors: true
+  authentication:
+    handler: build/functions/auth.authentication
+    events:
+      - http:
+          path: auth/authentication
+          method: post
+          cors: true
+  issueAuthorizationCode:
+    handler: build/functions/auth.issueAuthorizationCode
+    events:
+      - http:
+          path: auth/authorization/code
+          method: post
+          cors: true
+    timeout: 100
+  authorization:
+    handler: build/functions/auth.authorization
+
+resources:
+  Resources:
+    UsersDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+          -
+            AttributeName: email
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          -
+            IndexName: globalIndex1
+            KeySchema:
+              -
+                AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${env:DEPLOY_STAGE}_Users
+    ResourcesDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${env:DEPLOY_STAGE}_Resources

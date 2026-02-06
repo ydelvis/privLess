@@ -1,0 +1,66 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+model Form {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  title String
+  description String?
+  cover String?
+  thumbnail String?
+  body Json?
+  slug String @unique @default(cuid())
+  scheduledAt DateTime?
+  createdAt DateTime @default(now())
+  postedAt DateTime?
+  language String?
+  archived Boolean @default(false)
+  author String? @db.ObjectId
+  config FormConfig
+  responses Response[]
+}
+
+type FormConfig{
+  allow_multiple_responses Boolean @default(true)
+}
+
+model Field{
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+}
+
+model Response{
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  landedAt DateTime? @default(now())
+  submittedAt DateTime?
+  metadata ResponseMeta
+  form Form @relation(references: [id], fields: [formId])
+  formId String
+  answers Answer[]
+}
+
+type Answer {
+  field String // can be both name or id
+  data Json
+}
+
+type ResponseMeta{
+  ip String?
+  browser String?
+  platform Platform @default(web)
+  referer String?
+  ua String?
+}
+
+enum Platform{
+  web
+  api
+}

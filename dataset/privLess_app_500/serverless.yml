@@ -1,0 +1,337 @@
+service: ardere
+
+plugins:
+  - serverless-step-functions
+  - serverless-python-requirements
+
+package:
+  exclude:
+    - node_modules/**
+    - ardenv/**
+    - tests/**
+    - lib/**
+    - share/**
+    - man/**
+    - bin/**
+    - serverless/**
+  include:
+    - ardere/**
+
+provider:
+  name: aws
+  runtime: python2.7
+  memorySize: 128
+  timeout: 60
+  environment:
+    ecs_profile:
+      Fn::GetAtt:
+        - EC2ContainerProfile
+        - Arn
+    s3_ready_bucket:
+      Ref: "S3ReadyBucket"
+    metrics_bucket:
+      Ref: "MetricsBucket"
+    ec2_sg:
+      Fn::GetAtt:
+        - EC2SecurityGroup
+        - GroupId
+    metric_sg:
+      Fn::GetAtt:
+        - MetricSecurityGroup
+        - GroupId
+    container_log_group:
+      Ref: "ContainerLogs"
+
+  iamRoleStatements:
+    -  Effect: "Allow"
+       Action:
+         - "ecs:CreateCluster"
+         - "ecs:ListServices"
+         - "ecs:ListContainerInstances"
+         - "ecs:ListTasks"
+         - "ecs:DescribeClusters"
+         - "ecs:DescribeServices"
+         - "ecs:DescribeTaskDefinition"
+         - "ecs:DescribeTasks"
+         - "ecs:DescribeContainerInstances"
+         - "ecs:CreateService"
+         - "ecs:DeleteService"
+         - "ecs:UpdateService"
+         - "ecs:StartTask"
+         - "ecs:RegisterTaskDefinition"
+         - "ecs:DeregisterTaskDefinition"
+       Resource:
+         - "*"
+    -  Effect: "Allow"
+       Action:
+         - "s3:ListBucket"
+         - "s3:PutObject"
+         - "s3:PutObjectAcl"
+       Resource:
+         - Fn::Join: ['', ['arn:aws:s3:::', Ref: "S3ReadyBucket"]]
+    -  Effect: "Allow"
+       Action:
+         - "s3:PutObject"
+         - "s3:PutObjectAcl"
+         - "s3:GetObject"
+         - "s3:DeleteObject"
+       Resource:
+         - Fn::Join: ['', ['arn:aws:s3:::', Ref: "S3ReadyBucket", "/*"]]
+    -  Effect: "Allow"
+       Action:
+         - "s3:ListBucket"
+         - "s3:GetObject"
+       Resource:
+         - Fn::Join: ['', ['arn:aws:s3:::', Ref: "MetricsBucket", "/*"]]
+    -  Effect: "Allow"
+       Action:
+         - "ec2:DescribeInstances"
+         - "ec2:RunInstances"
+         - "ec2:CreateTags"
+       Resource:
+         - "*"
+    -  Effect: "Allow"
+       Action:
+         - "iam:GetRole"
+         - "iam:PassRole"
+       Resource:
+         Fn::GetAtt:
+           - EC2ContainerRole
+           - Arn
+
+functions:
+  populate_missing_instances:
+    handler: handler.populate_missing_instances
+    timeout: 300
+  ensure_metrics_available:
+    handler: handler.ensure_metrics_available
+    timeout: 300
+  ensure_metric_sources_created:
+    handler: handler.ensure_metric_sources_created
+    timeout: 300
+  create_ecs_services:
+    handler: handler.create_ecs_services
+    timeout: 300
+  wait_for_cluster_ready:
+    handler: handler.wait_for_cluster_ready
+  signal_cluster_start:
+    handler: handler.signal_cluster_start
+  check_for_cluster_done:
+    handler: handler.check_for_cluster_done
+  cleanup_cluster:
+    handler: handler.cleanup_cluster
+    timeout: 300
+  check_drain:
+    handler: handler.check_drain
+
+stepFunctions:
+  stateMachines:
+    ardere:
+      Comment: "ardere load-tester"
+      Version: "1.0"
+      StartAt: "Populate Missing Instances"
+      States:
+        "Populate Missing Instances":
+          Type: Task
+          Resource: populate_missing_instances
+          Next: "Ensure Metrics Available"
+        "Ensure Metrics Available":
+          Type: Task
+          Resource: ensure_metrics_available
+          Retry:
+            -
+              ErrorEquals:
+                - ServicesStartingException
+              IntervalSeconds: 10
+              MaxAttempts: 60
+              BackoffRate: 1
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+          Next: "Ensure Metric Sources Created"
+        "Ensure Metric Sources Created":
+          Type: Task
+          Resource: ensure_metric_sources_created
+          Retry:
+            -
+              ErrorEquals:
+                - CreatingMetricSourceException
+              IntervalSeconds: 5
+              MaxAttempts: 20
+              BackoffRate: 1
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+          Next: "Create ECS Services"
+        "Create ECS Services":
+          Type: Task
+          Resource: create_ecs_services
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+          Next: "Wait for Cluster Ready"
+        "Wait for Cluster Ready":
+          Type: Task
+          Resource: wait_for_cluster_ready
+          Retry:
+            -
+              ErrorEquals:
+                - ServicesStartingException
+              IntervalSeconds: 10
+              MaxAttempts: 180
+              BackoffRate: 1
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+          Next: "Signal Cluster Start"
+        "Signal Cluster Start":
+          Type: Task
+          Resource: signal_cluster_start
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+          Next: "Check for Cluster Done"
+        "Check for Cluster Done":
+          Type: Task
+          Resource: check_for_cluster_done
+          Next: "Wait for Cluster Done"
+          Retry:
+            -
+              ErrorEquals:
+                - NoSuchKey
+              IntervalSeconds: 10
+              MaxAttempts: 2
+              BackoffRate: 1
+          Catch:
+            -
+              ErrorEquals:
+                - States.ALL
+              ResultPath: "$.error-info"
+              Next: "Clean-up Cluster"
+        "Wait for Cluster Done":
+          Type: Wait
+          Seconds: 10
+          Next: "Check for Cluster Done"
+        "Clean-up Cluster":
+          Type: Task
+          Resource: cleanup_cluster
+          Next: "Checking Drain"
+        "Checking Drain":
+          Type: Task
+          Resource: check_drain
+          Retry:
+            -
+              ErrorEquals:
+                - UndrainedInstancesException
+              IntervalSeconds: 10
+              MaxAttempts: 10
+              BackoffRate: 1
+          End: true
+
+resources:
+  Resources:
+    S3ReadyBucket:
+      Type: "AWS::S3::Bucket"
+      Properties:
+        AccessControl: "PublicRead"
+    MetricsBucket:
+      Type: "AWS::S3::Bucket"
+      Properties:
+        AccessControl: "AuthenticatedRead"
+    MetricSecurityGroup:
+      Type: "AWS::EC2::SecurityGroup"
+      Properties:
+        GroupDescription: "ardere metrics"
+        SecurityGroupIngress:
+          -
+            IpProtocol: tcp
+            FromPort: 3000
+            ToPort: 3000
+            SourceSecurityGroupId:
+              Fn::GetAtt:
+                - GrafanaSecurityGroup
+                - GroupId
+          -
+            IpProtocol: tcp
+            FromPort: 8086
+            ToPort: 8086
+            SourceSecurityGroupId:
+              Fn::GetAtt:
+                - EC2SecurityGroup
+                - GroupId
+    GrafanaSecurityGroup:
+      Type: "AWS::EC2::SecurityGroup"
+      Properties:
+        GroupDescription: "grafana access"
+    EC2SecurityGroup:
+      Type: "AWS::EC2::SecurityGroup"
+      Properties:
+        GroupDescription: "ardere load-testers"
+    EC2ContainerRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Effect: "Allow"
+              Principal:
+                Service:
+                  - "ec2.amazonaws.com"
+              Action:
+                - "sts:AssumeRole"
+        Path: "/"
+        Policies:
+          -
+            PolicyName: "ecs-service"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                    - "ecs:CreateCluster"
+                    - "ecs:DeregisterContainerInstance"
+                    - "ecs:DiscoverPollEndpoint"
+                    - "ecs:Poll"
+                    - "ecs:RegisterContainerInstance"
+                    - "ecs:StartTelemetrySession"
+                    - "ecs:SubmitContainerStateChange"
+                    - "ecs:SubmitTaskStateChange"
+                    - "ecs:Submit"
+                    - "logs:CreateLogStream"
+                    - "logs:PutLogEvents"
+                  Resource: "*"
+                -
+                  Effect: "Allow"
+                  Action:
+                    - "s3:ListBucket"
+                    - "s3:GetObject"
+                  Resource:
+                    - Fn::Join: ['', ['arn:aws:s3:::', Ref: "MetricsBucket", "/*"]]
+    ContainerLogs:
+      Type: "AWS::Logs::LogGroup"
+      Properties:
+        RetentionInDays: 1
+    EC2ContainerProfile:
+      Type: "AWS::IAM::InstanceProfile"
+      Properties:
+        Path: "/"
+        Roles:
+          -
+            Ref: "EC2ContainerRole"

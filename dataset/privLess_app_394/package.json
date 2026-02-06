@@ -1,0 +1,57 @@
+{
+  "name": "getaroom-verificationcode",
+  "version": "1.0.0",
+  "description": "Room code",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx sls offline",
+    "test": "npx c8 ava",
+    "test:types": "npx type-coverage --at-least 95 --strict --ignore-files \"__tests__/**/*.ts\" --ignore-files \"src/application/errors/*.ts\"",
+    "docs": "rm -rf docs && mkdir docs && npm run docs:typedoc && npm run docs:depcruiser && npm run docs:cfndia",
+    "docs:depcruiser": "npx depcruise src --include-only \"^src\" --output-type dot | dot -T svg > docs/code-diagram.svg",
+    "docs:cfndia": "npx cfn-dia draw.io -t .serverless/cloudformation-template-update-stack.json --ci-mode -o docs/cfn-diagram.drawio",
+    "docs:typedoc": "npx typedoc --entryPoints src --entryPointStrategy expand --exclude '**/*+(test).ts' --externalPattern 'node_modules/**/*' --excludeExternals --out docs",
+    "deploy": "npx sls deploy",
+    "teardown": "npx sls remove"
+  },
+  "keywords": [],
+  "author": "Mikael Vesavuori",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3",
+    "mikrolog": "2"
+  },
+  "devDependencies": {
+    "@ava/typescript": "4",
+    "@mhlabs/cfn-diagram": "1",
+    "@types/aws-lambda": "8",
+    "@types/node": "20",
+    "@typescript-eslint/eslint-plugin": "7",
+    "@typescript-eslint/parser": "7",
+    "ava": "6",
+    "c8": "9",
+    "dependency-cruiser": "16",
+    "eslint": "8",
+    "eslint-config-prettier": "9",
+    "eslint-plugin-prettier": "5",
+    "prettier": "3",
+    "serverless": "3",
+    "serverless-esbuild": "1",
+    "serverless-iam-roles-per-function": "3",
+    "serverless-offline": "13",
+    "ts-node": "10",
+    "type-coverage": "2",
+    "typedoc": "latest"
+  },
+  "ava": {
+    "typescript": {
+      "rewritePaths": {
+        "src/": "build/"
+      },
+      "compile": false
+    },
+    "require": [
+      "ts-node/register"
+    ]
+  }
+}

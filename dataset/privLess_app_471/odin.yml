@@ -1,0 +1,57 @@
+schedule:
+  # This schedule initiates Odin once a day in the early morning (US ET) to clean up ephemeral stages
+  daily:
+    rate: cron(0 8 ? * * *) # 8 AM UTC / 3 AM ET
+
+  # This schedule initiates Odin every hour to clean up ephemeral stages
+  hourly:
+    rate: cron(0 */1 ? * * *) # every hour
+
+dynamicRules:
+  daily:
+    staleAfter: 2 # When running the daily check, delete a stack if its older than 2 hours
+  hourly:
+    staleAfter: 8 # When running the hourly check, delete a stack if its older than 8 hours
+
+# All of these rules are consistent between the schedules
+staticRules:
+  # Odin won't delete a stack with the following names (case insensitive, partial matches)
+  namesToRetain:
+    - ControlTower
+    - LumigoIntegrationV2
+
+  # Odin won't delete a stack with the following stages (case insensitive, full matches only)
+  stagesToRetain:
+    - PROD
+    - PRODUCTION
+    - QA
+    - STAGING
+    - DEV
+    - DEVELOPMENT
+    - AUTO
+    - AUTOMATION
+    - INFRA
+    - INFRASTRUCTURE
+    - COMMON
+
+  # Odin will only delete a stack if it's status is one of the following
+  deleteableStatuses:
+    - CREATE_COMPLETE
+    - ROLLBACK_COMPLETE
+    - UPDATE_COMPLETE
+    - UPDATE_ROLLBACK_COMPLETE
+
+  # A CloudFormation stack won't delete successfully if there are non-empty buckets associated with it.
+  # Use this property to indicate whether or not you want Odin to empty all buckets in the stack
+  # (default behavior). If you only want Odin to empty specific buckets then set this property to false
+  # and update the bucketsToEmpty property below with the logical resource ids of the buckets you want
+  # Odin to empty.
+  emptyAllBuckets: true
+
+  # Odin will empty buckets with the following CloudFormation logical IDs (if you don't want to empty
+  # all buckets)
+  bucketsToEmpty:
+    - ServerlessDeploymentBucket
+    - DocumentBucket
+    - S3BucketSite
+    - ApiDocumentationBucket

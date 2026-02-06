@@ -1,0 +1,42 @@
+{
+  "name": "email-service",
+  "version": "0.0.1",
+  "description": "Serverless Email Service",
+  "main": "handler.ts",
+  "scripts": {
+    "lint": "tslint 'src/**/*.ts'",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:ci": "JEST_JUNIT_OUTPUT=../../reports/junit/${npm_package_name}-service-test-results.xml jest --runInBand --ci",
+    "coverage": "jest --coverage",
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "prettier": "prettier --write src/**/*.ts",
+    "prettier:ci": "prettier --list-different src/**/*.ts"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "^7.0.0",
+    "aws-xray-sdk": "^3.0.0",
+    "source-map-support": "^0.5.12"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.62",
+    "@types/jest": "^27.0.0",
+    "@types/node": "^16.0.0",
+    "dotenv": "^16.0.0",
+    "fs-extra": "^10.0.0",
+    "jest": "27.5.1",
+    "serverless-plugin-tracing": "^2.0.0",
+    "@anttiviljami/serverless-stack-output": "^0.3.1",
+    "serverless-webpack": "^5.2.0",
+    "ts-jest": "27.1.5",
+    "ts-loader": "^9.0.0",
+    "tslint": "^6.0.0",
+    "tslint-config-prettier": "^1.18.0",
+    "typescript": "^4.0.0",
+    "webpack": "^5.0.0",
+    "webpack-node-externals": "^3.0.0"
+  },
+  "author": "Erez Rokah",
+  "license": "MIT"
+}

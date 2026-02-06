@@ -1,0 +1,24 @@
+{
+  "name": "karate-scraper",
+  "version": "0.0.1",
+  "scripts": {
+    "deploy": "sls deploy",
+    "remove": "sls remove",
+    "package": "sls package",
+    "dynamodb": "sls dynamodb install",
+    "dev": "sls offline start --noTimeout --prefix test"
+  },
+  "author": "siarhei.m.a@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "@serverless-chrome/lambda": "^1.0.0-28",
+    "bluebird": "^3.5.1",
+    "chrome-remote-interface": "^0.25.4",
+    "winston": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/bluebird": "^3.5.18",
+    "@types/winston": "^2.3.7",
+    "aws-sdk": "^2.156.0"
+  }
+}

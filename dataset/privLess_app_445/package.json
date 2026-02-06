@@ -1,0 +1,27 @@
+{
+  "name": "serverless-kinesis",
+  "version": "0.0.1",
+  "repository": "ssh://git@github.com/otofu-square/serverless-kinesis.git",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --outDir .build"
+  },
+  "devDependencies": {
+    "@line/bot-sdk": "5.2.0",
+    "@types/aws-lambda": "0.0.32",
+    "@types/node": "9.4.6",
+    "@types/ramda": "0.25.18",
+    "awesome-typescript-loader": "3.5.0",
+    "aws-sdk": "2.202.0",
+    "serverless": "1.26.0",
+    "serverless-webpack": "4.3.0",
+    "tslint": "5.9.1",
+    "tslint-config-prettier": "1.9.0",
+    "typescript": "2.7.2",
+    "uglifyjs-webpack-plugin": "1.2.2",
+    "webpack": "3.11.0"
+  },
+  "dependencies": {
+    "ramda": "0.25.0"
+  }
+}

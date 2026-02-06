@@ -1,0 +1,25 @@
+{
+  "name": "serverless-template-greet-api-layer",
+  "version": "0.1.0",
+  "author": "Meir Gabay <unfor19@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "deploy:msg": "echo 'IMPORTANT! Do not forget to re-deploy the API to update Lambda Layer version'",
+    "build": "bash ./build_layer.sh",
+    "deploy:vault-dev": "aws-vault exec sls-template-dev -- sls deploy --stage=dev",
+    "deploy:vault-staging": "aws-vault exec sls-template-dev -- sls deploy --stage=staging",
+    "deploy:vault-prod": "aws-vault exec sls-template-prod -- sls deploy --stage=prod",
+    "deploy:dev": "sls deploy --stage=dev",
+    "deploy:staging": "sls deploy --stage=staging",
+    "deploy:prod": "sls deploy --stage=prod",
+    "start:local": "serverless offline start --stage=local --noAuth",
+    "start:local:seed": "serverless offline start --stage=local --noAuth --seed",
+    "start:dev": "serverless offline start --stage=dev --noAuth",
+    "destroy:vault-dev": "aws-vault exec sls-template-dev -- sls remove --stage=dev",
+    "destroy:vault-staging": "aws-vault exec sls-template-dev -- sls remove --stage=staging",
+    "destroy:vault-prod": "aws-vault exec sls-template-prod -- sls remove --stage=prod",
+    "destroy:dev": "sls remove --stage=dev",
+    "destroy:staging": "sls remove --stage=staging",
+    "destroy:prod": "sls remove --stage=prod"
+  }
+}

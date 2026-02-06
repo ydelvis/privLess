@@ -1,0 +1,11 @@
+[[constraint]]
+  branch = "master"
+  name = "github.com/eawsy/aws-lambda-go-core"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/eawsy/aws-lambda-go-event"
+
+[[constraint]]
+  name = "github.com/satori/go.uuid"
+  version = "1.1.0"

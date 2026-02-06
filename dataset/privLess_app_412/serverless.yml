@@ -1,0 +1,54 @@
+service: page-hosting
+
+plugins:
+  - serverless-plugin-monorepo
+  - serverless-plugin-typescript
+  - serverless-plugin-optimize
+  - serverless-offline
+  - serverless-domain-manager
+
+custom:
+  customDomain:
+    domainName: pages.grida.cc
+    certificateName: pages.grida.cc
+    basePath: ""
+    createRoute53Record: true
+    stage: production
+  serverless-offline:
+    httpPort: 4014
+    noPrependStageInUrl: true
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: us-west-1
+  apiGateway:
+    # https://stackoverflow.com/questions/61003311/serverless-i-image-upload-to-s3-broken-after-deploy-local-worked-only/61003498#61003498
+    binaryMediaTypes:
+      - "*/*"
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:PutObjectAcl
+      Resource: "arn:aws:s3:::page-hosting/*"
+
+resource:
+  s3bucket:
+    Type: S3::Bucket
+    Properties:
+      BucketName: page-hosting
+
+package:
+  individually: true
+
+functions:
+  main:
+    handler: src/index.handler
+    events:
+      - http:
+          method: any
+          path: /{proxy+}
+          cors:
+            origin: "*"

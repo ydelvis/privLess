@@ -1,0 +1,110 @@
+service: aws-event-sourcing
+
+custom:
+  deployTable: ${self:service}-${opt:stage, self:provider.stage}-deployTable
+  dynamodb:
+    start:
+      inMemory: true
+      migrate: true
+  dev:
+    dataDeletionPolicy: 'Delete'
+    tracing: true
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-iam-roles-per-function
+  - serverless-plugin-tracing
+  - serverless-dynamodb-local
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 1024
+  timeout: 6
+  environment:
+    AWS_XRAY_TRACING_NAME: ${self:service}-${opt:stage, self:provider.stage}-UNTITLED-service
+  tracing: ${self:custom.${opt:stage, self:provider.stage}.tracing, 'true'}
+
+functions:
+
+  deploys:
+    handler: src/example/deploys/deploys.handler
+    environment:
+      DYNAMODB_TABLE: ${self:custom.deployTable}
+      AWS_XRAY_TRACING_NAME: ${self:service}-${opt:stage, self:provider.stage}-deploys-service
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - xray:PutTraceSegments
+          - xray:PutTelemetryRecords
+        Resource: "*"
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:Scan
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: { "Fn::Join" : [ ":", [ "arn:aws:dynamodb:${opt:region, self:provider.region}", { "Ref" : "AWS::AccountId" }, "table/${self:custom.deployTable}" ] ] }
+    events:
+      - http:
+          path: deploys
+          method: get
+          cors: true
+      - http:
+          path: deploys
+          method: post
+          cors: true
+      - http:
+          path: deploys/{id}
+          method: get
+          cors: true
+      - http:
+          path: deploys/{id}/events
+          method: get
+          cors: true
+      - http:
+          path: deploys/{id}
+          method: delete
+          cors: true
+
+  notifications:
+    handler: src/example/deploys/notifications.handler
+    environment:
+      AWS_XRAY_TRACING_NAME: ${self:service}-${opt:stage, self:provider.stage}-notifications-service
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - xray:PutTraceSegments
+          - xray:PutTelemetryRecords
+        Resource: "*"
+    events:      
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt:
+              - DeployTable
+              - StreamArn
+
+resources:
+  Resources:
+    DeployTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: ${self:custom.${opt:stage, self:provider.stage}.dataDeletionPolicy, 'Retain'}
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: number
+            AttributeType: N
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: number
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TableName: ${self:custom.deployTable}

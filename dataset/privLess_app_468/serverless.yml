@@ -1,0 +1,281 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: aqua-stat-websocket-server-handler
+# app and org for use with dashboard.serverless.com
+#app: your-app-name
+#org: your-org-name
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  lambdaHashingVersion: 20201221
+  stage: ${opt:stage, 'dev'}
+
+  # you can overwrite defaults here
+  #  stage: dev
+  region: us-west-1
+
+  # you can add statements to the Lambda function's IAM Role here
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["ExternalControlScheduleTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+          Resource:
+            - { "Fn::GetAtt": ["UsersTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["ClientsTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["DevicesTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:Query"
+          Resource:
+            Fn::Join:
+              - "/"
+              - - { "Fn::GetAtt": ["ClientsTable", "Arn"] }
+                - "index"
+                - "*"
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:Scan"
+          Resource:
+            - { "Fn::GetAtt": ["DeviceKeysTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "dynamodb:GetItem"
+          Resource:
+            - { "Fn::GetAtt": ["ApiClientsTable", "Arn"] }
+
+        - Effect: Allow
+          Action:
+            - "s3:GetObject"
+          Resource:
+            Fn::Join:
+              - ""
+              - - "arn:aws:s3:::"
+                - ${self:provider.environment.FIRMWARE_BUCKET_NAME}
+                - "/*"
+
+        - Effect: Allow
+          Action:
+            - "s3:ListBucket"
+          Resource:
+            Fn::Join:
+              - ""
+              - - "arn:aws:s3:::"
+                - ${self:provider.environment.FIRMWARE_BUCKET_NAME}
+
+  environment:
+    ACCOUNT_ID: ${aws:accountId}
+    REGION: ${aws:region}
+    EXTERNAL_CONTROL_SCHEDULE_TABLE_NAME: ${self:provider.stage}AquaStatExternalControlSchedule
+    CLIENTS_TABLE_NAME: ${self:provider.stage}AquaStatWSClients
+    DEVICE_ID_INDEX_NAME: ${self:provider.stage}DeviceIdIndex
+    DEVICES_TABLE_NAME: ${self:provider.stage}AquaStatDevices
+    DEVICE_KEYS_TABLE_NAME: ${self:provider.stage}AquaStatDeviceKeys
+    USERS_TABLE_NAME: ${self:provider.stage}AquaStatUsers
+    API_CLIENTS_TABLE_NAME: ${self:provider.stage}AquaStatApiClients
+    HMAC_API_CLIENTS_SECRET_KEY: ${env:HMAC_API_CLIENTS_SECRET_KEY}
+    HMAC_USERS_SECRET_KEY: ${env:HMAC_USERS_SECRET_KEY}
+    FIRMWARE_BUCKET_NAME: ${self:provider.stage}-aquastat-firmware-binaries
+    WSSAPIGATEWAYENDPOINT:
+      Fn::Join:
+        - ""
+        - - "https://"
+          - Ref: WebsocketsApi
+          - ".execute-api."
+          - Ref: AWS::Region
+          - ".amazonaws.com/${sls:stage}"
+
+  s3:
+    firmwareBucket:
+      name: ${self:provider.environment.FIRMWARE_BUCKET_NAME}
+
+functions:
+  firmwareUpgrade:
+    handler: src/firmware-upgrade.execute
+    events:
+      - s3:
+          bucket: firmwareBucket
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .bin
+
+  httpHandler:
+    handler: src/http-handler.handle
+    events:
+      - httpApi:
+          path: /api/sign-in
+          method: POST
+      - httpApi:
+          path: /api/sign-up
+          method: POST
+      - httpApi:
+          path: /api/authenticate
+          method: POST
+      - httpApi:
+          path: /api/schedule
+          method: PUT
+      - httpApi:
+          path: /api/schedule/weekday/{day}
+          method: PUT
+      - httpApi:
+          path: /api/schedule
+          method: GET
+      - httpApi:
+          path: /api/schedule/weekday/{day}
+          method: GET
+      - httpApi:
+          path: /api/schedule/now
+          method: PUT
+      - httpApi:
+          path: /api/sensor-readings
+          method: GET
+
+  websocketHandler:
+    handler: src/ws-handler.handle
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+      - websocket:
+          route: msg
+      - websocket:
+          route: signUp
+      - websocket:
+          route: firmwareCheck
+      - websocket:
+          route: request
+      - websocket:
+          route: response
+
+plugins:
+  - serverless-plugin-typescript
+
+resources:
+  Resources:
+    ClientsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CLIENTS_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+          - AttributeName: DeviceId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.DEVICE_ID_INDEX_NAME}
+            KeySchema:
+              - AttributeName: DeviceId
+                KeyType: HASH
+            Projection:
+              ProjectionType: "ALL"
+
+    DevicesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DEVICES_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: DeviceId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: DeviceId
+            KeyType: HASH
+
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: UserEmail
+            AttributeType: S
+        KeySchema:
+          - AttributeName: UserEmail
+            KeyType: HASH
+    DeviceKeysTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DEVICE_KEYS_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: KeyId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: KeyId
+            KeyType: HASH
+    ApiClientsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.API_CLIENTS_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: ApiClientId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: ApiClientId
+            KeyType: HASH
+    ExternalControlScheduleTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.EXTERNAL_CONTROL_SCHEDULE_TABLE_NAME}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: DayIndex
+            AttributeType: N
+        KeySchema:
+          - AttributeName: DayIndex
+            KeyType: HASH

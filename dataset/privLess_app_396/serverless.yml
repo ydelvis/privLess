@@ -1,0 +1,233 @@
+service: ISA-Rankings
+description: ISA-Rankings Application Serverless template
+# app: isa-rankings
+# tenant: cansahin
+
+plugins:
+  - serverless-webpack
+  - serverless-prune-plugin
+  - serverless-offline
+  - serverless-dynamodb-autoscaling
+
+custom:
+  defaultStage: Dev
+  defaultProfile: ISA-Rankings_Serverless
+  defaultRegion: eu-west-1
+  defaultS3ImageBucketName: isa.rankings.${self:provider.region}.images
+
+  s3ImageBucketName: 
+    Dev: isa.rankings.${self:provider.region}.images
+    Prod: images.isa-rankings.org
+
+  isProdCase:
+    Dev: false
+    Prod: true
+    other: false
+  
+  s3ImageBucketArn: arn:aws:s3:::${self:custom.s3ImageBucketName.${self:custom.currentStage}, self:custom.defaultS3ImageBucketName}
+  isProd: ${self:custom.isProdCase.${self:custom.currentStage}, self:custom.isProdCase.other}
+  currentStage: ${opt:stage, 'Dev'}
+  secrets: ${file(./serverless/secrets.yml):${self:custom.currentStage}}
+  environmentVars: ${file(./serverless/environment.yml):${self:custom.currentStage}}
+
+  profiles:
+    Dev: ISA-Rankings_Serverless
+    Prod: ISA-Rankings_Serverless
+  regions:
+    Dev: eu-west-1
+    Prod: eu-central-1
+  prune:
+    automatic: true
+    number: 5
+  webpack:
+    includeModules:
+      forceExclude:
+        - aws-sdk
+        - typescript
+    webpackConfig: ./webpack/webpack.config.${self:custom.currentStage}.js
+    packagerOptions:
+      scripts:
+        - rm -rf node_modules/sharp
+        - npm install --arch=x64 --platform=linux sharp
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 30
+  stage: ${self:custom.currentStage}
+  region: ${self:custom.regions.${self:custom.currentStage}, self:custom.defaultRegion}
+  profile: ${env:AWS_PROFILE}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:BatchReadItem
+        - dynamodb:BatchWriteItem
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:Scan
+        - dynamodb:Query
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeStream
+        - dynamodb:GetRecords
+        - dynamodb:GetShardIterator
+        - dynamodb:ListStreams
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/ISA-Rankings*
+    - Effect: Allow
+      Action:
+        - logs:PutLogEvents
+        - logs:DescribeLogStreams
+        - logs:DescribeLogGroups
+        - logs:CreateLogStream
+        - logs:CreateLogGroup
+        - logs:PutRetentionPolicy
+      Resource: arn:aws:logs:${self:provider.region}:*:log-group:ISA-Rankings*
+    - Effect: Allow
+      Action:
+        - cloudwatch:PutMetricData
+      Resource: '*'
+    - Effect: Allow
+      Action:
+        - 's3:GetObject'
+        - 's3:PutObject*'
+        - 's3:ListBucket'
+      Resource: '${self:custom.s3ImageBucketArn}/*'
+
+  deploymentBucket:
+    name: isa.serverless.${self:provider.region}.deploys
+
+package:      
+  # individually: true
+  exclude:
+    - secrets.yml
+    - .env
+    
+functions:
+  AdminAPI:
+    handler: src/api/admin/index.handler
+    description: Rankings Admin WebAPI service
+    environment: ${self:custom.environmentVars}
+    events:
+      - http: 
+          method: any
+          path: /admin/api/{proxy+}
+          cors: true
+          authorizer:
+            arn: ${self:custom.secrets.CognitoPoolAuthorizer}
+  WebAppAPI:
+    handler: src/api/webapp/index.handler
+    description: Rankings WebAPI service
+    environment: ${self:custom.environmentVars}
+    events:
+      - http:
+          method: any
+          path: /{proxy+}
+          cors: true
+  Streams:
+    handler: src/dynamodb-streams/index.handler
+    description: DynamoDB Streams handler
+    environment: ${self:custom.environmentVars}
+    timeout: 30
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt:
+              - ISARankingsTable
+              - StreamArn
+          batchSize: 100
+  Image-Resizer:
+    handler: src/image-resizer/index.handler
+    description: Rankings Image resizer service
+    environment: ${self:custom.environmentVars}
+    events:
+     - s3:
+          bucket: ${self:custom.s3ImageBucketName.${self:custom.currentStage}, self:custom.defaultS3ImageBucketName}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: public/
+  Cron-Job:
+    handler: src/cron-job/index.handler
+    description: Rankings CronJob
+    timeout: 600
+    memorySize: 256
+    environment: ${self:custom.environmentVars}
+    events:
+      - schedule: rate(3 days)
+resources:
+  Resources:
+    ISARankingsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: 'ISA-Rankings'
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK_GSI
+            AttributeType: S
+          - AttributeName: LSI
+            AttributeType: S
+          - AttributeName: GSI_SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK_GSI
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 15
+          WriteCapacityUnits: 15
+        LocalSecondaryIndexes: 
+          - IndexName: 'PK-LSI-index'
+            KeySchema: 
+              - AttributeName: PK
+                KeyType: HASH
+              - AttributeName: LSI
+                KeyType: RANGE
+            Projection: 
+              ProjectionType: ALL
+        GlobalSecondaryIndexes: 
+          - IndexName: 'GSI-GSI_SK-index'
+            KeySchema: 
+              - AttributeName: SK_GSI
+                KeyType: HASH
+              - AttributeName: GSI_SK
+                KeyType: RANGE
+            Projection: 
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 10
+              WriteCapacityUnits: 10
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        # PointInTimeRecoverySpecification:
+          # PointInTimeRecoveryEnabled: ${self:custom.isProd} No need for now
+    CloudWatchApplicationLogs:
+      Type: AWS::Logs::LogGroup
+      DeletionPolicy: Retain
+      Properties:
+        LogGroupName: ISA-Rankings/ApplicationLogs
+        RetentionInDays: 60    
+    SnsNotificationTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ISA Rankings Notifications
+        TopicName: ISA-Rankings-Notifications
+    SnsTopicPolicy:
+      Type: AWS::SNS::TopicPolicy
+      Properties:
+        PolicyDocument:
+          Statement:
+          # - Sid: SnsTopicPolicy
+            Effect: Allow
+            Principal:
+              AWS: '*'
+              # Service: lambda.amazonaws.com
+            Action: sns:Publish
+            Resource: 
+              Ref: SnsNotificationTopic
+        Topics:
+          - Ref: SnsNotificationTopic

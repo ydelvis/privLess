@@ -1,0 +1,30 @@
+language: node_js
+cache:
+  yarn: true
+  directories:
+    - node_modules
+before_install:
+  - chmod +x .ci/remove.sh
+  - chmod +x .ci/deploy.sh
+  - chmod +x .ci/remove-alpha.sh
+  - chmod +x .ci/deploy-alpha.sh
+  - chmod +x .ci/remove-prod.sh
+  - chmod +x .ci/deploy-prod.sh
+  - npm install -g serverless
+jobs:
+  include:
+    - stage: remove
+      script: ".ci/remove.sh"
+      if: type = push AND branch = master AND commit_message =~ /(redeploy)/
+    - stage: deploy
+      script: ".ci/deploy.sh"
+      if: type = push AND branch = master
+    - stage: prod-deploy
+      script: ".ci/deploy-prod.sh"
+      if: type = push AND branch = master
+    - stage: alpha-remove
+      script: ".ci/remove-alpha.sh"
+      if: type = push AND branch = alpha AND commit_message =~ /(redeploy)/
+    - stage: alpha-deploy
+      script: ".ci/deploy-alpha.sh"
+      if: type = push AND branch = alpha

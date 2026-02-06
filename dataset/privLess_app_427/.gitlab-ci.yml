@@ -1,0 +1,40 @@
+image: node:latest
+
+stages:
+    - build # install all npm dependencies
+    - test    # execute unit tests
+    - deploy # deploy to aws
+
+cache:
+  paths:
+    - node_modules/
+  
+npm_Install:
+    stage: build
+    script:
+        - npm install
+    # artifacts describe the result of the stage
+    # that can be used in consecutive stages
+    artifacts:
+      untracked: true
+
+linter_code_check:
+    stage: test
+    script:
+        # install standardjs for linting
+        - npm run tslint
+Jest_Unit_Tests:
+    stage: test
+    script:
+        - npm run unit-tests
+    coverage: /All files[^|]*\|[^|]*\s+([\d\.]+)/
+
+Deploy_To_AWS:
+    stage: deploy
+    # use the artifcats of the 'npmInstall' job
+    dependencies:
+        - npm_Install
+    script:
+        - npm install -g serverless
+        - serverless config credentials --provider aws --key $AWS_ACCESS_KEY_ID --secret $AWS_SECRET_ACCESS_KEY
+        - npm run deploy-dev

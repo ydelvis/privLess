@@ -1,0 +1,3 @@
+.weui-footer button {
+  margin-right: 15rpx;
+}

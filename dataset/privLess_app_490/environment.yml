@@ -1,0 +1,11 @@
+name: naip-cogeo-mosaic
+channels:
+  - conda-forge
+dependencies:
+  - awscli
+  - click
+  - pygeos
+  - pip
+  - pip:
+    - cogeo-mosaic>=3.0a5
+    - rio-cogeo>=2.0a4

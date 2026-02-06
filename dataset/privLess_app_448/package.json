@@ -1,0 +1,40 @@
+{
+  "name": "json-serverless-template",
+  "version": "1.6.16",
+  "description": "template for json-serverless project",
+  "author": "pharindoko",
+  "bugs": "https://github.com/pharindoko/json-serverless/issues",
+  "scripts": {
+    "start": "sls offline",
+    "build": "tsc -b .",
+    "deploy": "npm run build && sls deploy"
+  },
+  "dependencies": {
+    "express": "4.17",
+    "json-serverless-lib": "file:../server",
+    "serverless-http": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.1",
+    "aws-sdk": "^2.1440.0",
+    "lerna": "^7.1.5",
+    "serverless": "^2.72.4",
+    "serverless-offline": "^8.8.1",
+    "ts-loader": "9.1.2",
+    "typescript": "^4.9.5"
+  },
+  "homepage": "https://github.com/pharindoko/json-serverless",
+  "license": "MIT",
+  "main": "src/handler.ts",
+  "repository": "pharindoko/json-serverless",
+  "files": [
+    "/src",
+    "/dist",
+    "/config",
+    "serverless.yml",
+    "webpack.config.js",
+    "tsconfig.json",
+    "package.json",
+    "package-lock.json"
+  ]
+}

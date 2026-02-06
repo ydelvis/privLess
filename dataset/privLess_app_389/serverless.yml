@@ -1,0 +1,173 @@
+service: org-serverless-api
+
+frameworkVersion: ">=1.1.0 <2.0.0"
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-plugin-scripts
+  
+provider:
+  name: aws
+  stage: ${{opt:stage, 'local'}}
+  region: ${{opt:region, 'us-west-2'}}
+  
+  # use ${{}} to access serverless variables
+  # this is necessary because cloudformation uses ${} syntax
+  variableSyntax: "\\${{([ ~:a-zA-Z0-9._\\'\",\\-\\/\\(\\)]+?)}}"
+      
+  stackTags:
+    SERVICE: ${{self:service}}
+    STAGE: ${{self:provider.stage}}
+    REGION: ${{self:provider.region}}
+    VERSION: ${{file(./package.json):version}}
+
+  runtime: nodejs12.x
+  memorySize: 256
+  timeout: 30
+
+  environment:
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+
+    # List environment vars to be passed down to functions here
+    # This includes env vars from .env files too
+    AUTH0_DOMAIN: ${{env:AUTH0_DOMAIN}}
+    AUTH0_API_AUDIENCE: ${{env:AUTH0_API_AUDIENCE}}
+
+  usagePlan:
+    quota:
+      limit: 1000
+      offset: 0
+      period: DAY
+    throttle:
+      burstLimit: 10
+      rateLimit: 5
+
+  iamManagedPolicies:
+    # see https://github.com/serverless/serverless/issues/6698
+    - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:BatchWriteItem
+        - dynamodb:BatchGetItem
+        - dynamodb:GetRecords
+        - dynamodb:GetShardIterator
+        - dynamodb:DescribeStream
+        - dynamodb:ListStreams
+      Resource:
+        - Fn::GetAtt: [DynamoDBTableEmojiHashes, Arn]
+        - Fn::Join: ['', [Fn::GetAtt: [DynamoDBTableEmojiHashes, Arn], '/*']]
+
+package:
+  # all dependencies are included in the compiled Javascript using Parcel
+  # therefore we can exclude everything except for the distributable folder
+  exclude:
+    - '**'
+    - '!dist/**'
+    
+custom:
+
+  scripts:
+    hooks:
+      # Build prior to packaging
+      'before:package:createDeploymentArtifacts': yarn build
+
+  dotenv:
+    include: []
+
+functions:
+
+  # Custom Authorizer function
+  # See https://github.com/serverless/examples/blob/master/aws-node-auth0-custom-authorizers-api/serverless.yml
+  # See https://github.com/serverless/forms-service/blob/master/backend/serverless.yml
+  # See https://www.alexdebrie.com/posts/lambda-custom-authorizers/
+  auth:
+    handler: dist/auth.handleAuthVerification
+    cors: true
+
+  getEmojiFromInputString:
+    handler: dist/emoji.getEmojiFromStringHandler
+    environment:
+      EMOJI_HASHES_TABLE_NAME:
+        Ref: DynamoDBTableEmojiHashes
+    events:
+      - http:
+          authorizer: auth
+          path: '{version}/emoji/{inputString}'
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                version: true
+                inputString: true
+
+resources:
+  Resources:
+    DynamoDBTableEmojiHashes:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+          -
+            AttributeName: input
+            AttributeType: S
+        
+        KeySchema:
+          # select by id sorted by input string
+          -
+            AttributeName: id
+            KeyType: HASH
+          -
+            AttributeName: input
+            KeyType: RANGE
+
+        GlobalSecondaryIndexes:
+          -
+            IndexName: input-id-gsi1
+            
+            # select by input string sorted by id
+            KeySchema:
+              -
+                AttributeName: input
+                KeyType: HASH
+              -
+                AttributeName: id
+                KeyType: RANGE
+
+            Projection:
+              ProjectionType: ALL
+        
+        BillingMode: PAY_PER_REQUEST
+
+    # This response is needed for custom authorizer failures cors support
+    GatewayResponse:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: EXPIRED_TOKEN
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+        StatusCode: '401'
+    AuthFailureGatewayResponse:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: UNAUTHORIZED
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+        StatusCode: '401'

@@ -1,0 +1,62 @@
+service: we45-sls-workshop-jwk
+provider:
+  name: aws
+  runtime: python3.7
+  memorySize: 2048
+  timeout: 20
+  stage: dev
+  region: us-west-2
+
+  # you can add statements to the Lambda function's IAM Role here
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "logs:*"
+        - "s3:*"
+        - "ssm:*"
+      Resource:
+        - "*"
+
+plugins:
+  - serverless-python-requirements
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    usePipenv: false
+    slim: true
+    strip: false
+
+resources:
+  Resources:
+    S3JWKBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: jwk-resources-${sls:instanceId}
+
+functions:
+  jwk-validate:
+    handler: handler.main
+    timeout: 20
+    events:
+      - http:
+          path: jwk
+          method: get
+          cors: true
+  jwk-init:
+    handler: handler.init
+    environment:
+      BUCKET_NAME: ${self:resources.Resources.S3JWKBucket.Properties.BucketName}
+    events:
+      - http:
+          path: init
+          method: get
+          cors: true
+  jwk-login:
+    handler: handler.login
+    events:
+      - http:
+          path: login
+          method: post
+          cors: true
+
+  

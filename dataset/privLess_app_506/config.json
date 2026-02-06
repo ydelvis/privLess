@@ -1,0 +1,12 @@
+{
+  "reddit": {
+    "client-id": "[reddit-client-id]",
+    "client-secret": "[reddit-client-secret]"
+  },
+  "slack-hook-url": "[slack-hook-url]",
+  "subreddits": "programming^lambda|Python^lambda"
+}
+
+
+
+

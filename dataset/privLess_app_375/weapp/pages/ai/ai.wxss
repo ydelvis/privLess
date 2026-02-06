@@ -1,0 +1,9 @@
+.ai {
+  display: flex;
+  flex-flow:column nowrap;
+  justify-content:center;
+}
+
+.ai button {
+  margin-top: 2rem;
+}

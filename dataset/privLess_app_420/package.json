@@ -1,0 +1,39 @@
+{
+  "name": "chatgpt-serverless-discord-bot",
+  "version": "1.0.0",
+  "main": "src/proxy/handler.ts",
+  "repository": "https://github.com/LemonDouble/chatgpt-serverless-discord-bot.git",
+  "author": "lemondouble",
+  "license": "MIT",
+  "scripts": {
+    "register": "ts-node register.ts",
+    "deploy" : "ts-node register.ts && serverless deploy",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix ."
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20.14.11",
+    "@typescript-eslint/eslint-plugin": "^5.61.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-standard-with-typescript": "^37.0.0",
+    "eslint-plugin-import": "^2.30.0",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-promise": "^6.6.0",
+    "prettier": "^3.3.3",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-plugin-typescript": "^2.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "*"
+  },
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.659.0",
+    "axios": "^1.7.7",
+    "discord-interactions": "^3.4.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.66.1",
+    "tweetnacl": "^1.0.3"
+  }
+}

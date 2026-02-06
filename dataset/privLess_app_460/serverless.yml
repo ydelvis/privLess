@@ -1,0 +1,159 @@
+frameworkVersion: '3'
+service: slsnode # for local development env name should be short
+
+plugins:
+  - serverless-deployment-bucket
+  - serverless-plugin-typescript
+  - serverless-localstack
+  - serverless-offline
+
+package:
+  individually: false # use false for faster local development
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  memorySize: 256
+  region: 'eu-west-1'
+  stage: ${opt:stage, 'development'}
+  timeout: 15
+  tracing:
+    apiGateway: false
+    lambda: false
+
+  tags:
+    project: slsnode
+
+  deploymentBucket:
+    name: ${file(package.json):name}-bucket
+    serverSideEncryption: AES256
+
+  # Policies
+  iam:
+    role:
+      managedPolicies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      statements:
+        - Effect: 'Allow'
+          Action:
+            - 'secretsmanager:GetSecretValue'
+          Resource: [
+            "*"
+          ]
+        - Effect: Allow
+          Action:
+            - dynamodb:DescribeTable
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:BatchWriteItem
+            - dynamodb:ConditionCheckItem
+          Resource:
+            - "Fn::GetAtt": [ UserTable, Arn ]
+        - Effect: 'Allow'
+          Action:
+            - sns:Publish
+          Resource:
+            !Ref SnsUserTopic
+
+  environment:
+    ENV: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    SEND_DOMAIN_EVENTS: 'true'
+    SLS_DEBUG: '*'
+    UNDERLYING_CLIENT: 'awssns'
+    USER_TABLE: !Ref UserTable # inject the User table name as env variable
+
+  # HTTP API (Gateway v2) Configuration
+  httpApi:
+    useProviderTags: true
+    authorizers:
+      customAuthorizerV2:
+        type: request
+        functionName: authorizerFuncV2
+
+custom:
+  defaultStage: local
+  serverless-offline:
+    allowCache: true
+    ignoreJWTSignature: true
+  localstack:
+    debug: true
+    stages:
+      - development
+      - local
+    autostart: false
+    host: http://localhost
+    edgePort: 4566
+#  lambda:
+#    # Enable this flag to improve performance
+#    mountCode: True
+  deploymentBucket:
+    versioning: false
+
+functions:
+  graphql:
+    handler: src/handler.graphqlHandler
+    events:
+      - httpApi: # HTTP API (Gateway V2)
+          method: post
+          path: /graphql
+          cors: true # For configuration, see https://www.serverless.com/framework/docs/providers/aws/events/http-api#cors-setup
+          authorizer:
+            name: customAuthorizerV2
+  getUsers:
+    handler: src/handler.getUsers
+    events:
+      - http: # REST API (Gateway V1)
+          method: get
+          path: /users
+          cors: true
+          authorizer: authorizerFuncV1 # comment when deploying to LocalStack, if not using LocalStack PRO
+  authorizerFuncV1:
+    handler: src/handler.authorizerV1
+  authorizerFuncV2:
+    handler: src/handler.authorizerV2
+
+resources:
+
+  #Creating New Resources
+  Resources:
+    # DynamoDB
+    UserTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Users
+        BillingMode: PAY_PER_REQUEST # pay on-demand, no resources provisioned
+        AttributeDefinitions:
+          - AttributeName: _id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+          - AttributeName: username
+            AttributeType: S
+        KeySchema:
+          - AttributeName: _id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: index_email
+            Projection:
+              ProjectionType: ALL
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+          - IndexName: index_username
+            Projection:
+              ProjectionType: ALL
+            KeySchema:
+              - AttributeName: username
+                KeyType: HASH
+
+    # SNS
+    SnsUserTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: Domain Events of User Aggregate Topic
+        TopicName: events_aggregate_user

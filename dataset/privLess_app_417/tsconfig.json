@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "lib": ["es2022", "dom"],
+    "moduleResolution": "Node",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "sourceMap": false,
+    "target": "ES2022",
+    "outDir": "lib",
+    "strict": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["jest", "node"],
+    "esModuleInterop": true,
+    "typeRoots": ["typings", "node_modules/@types"],
+    "module": "ES2022"
+  },
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  },
+  "include": ["src", "typings/**/*.d.ts"],
+  "exclude": ["**/*.test.ts", "node_modules", "src/__mocks__/**/*.ts"]
+}

@@ -1,0 +1,29 @@
+### Yarn Integrity file
+.yarn-integrity
+
+### idea settings
+aws-serverless-prototype.iml
+.idea
+
+### serverless framework settings
+.serverless
+*.log
+npm-debug.log
+pids
+*.pid
+*.seed
+dist
+lib-cov
+coverage
+.grunt
+.lock-wscript
+node_modules
+.DS_Store
+.tmp
+admin.env
+.env
+tmp
+.webpack
+
+### Test Coverage Report
+.nyc_output

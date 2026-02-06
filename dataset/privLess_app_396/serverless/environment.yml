@@ -1,0 +1,17 @@
+# Environment variables for lambda
+
+default: &default
+  <<: *default
+  ENVIRONMENT: ${self:provider.stage}
+  REDISHOST: ${self:custom.secrets.REDISHOST}
+  REDISPASSWORD: ${self:custom.secrets.REDISPASSWORD}
+  REDISPORT: ${self:custom.secrets.REDISPORT}
+  DISABLE_STREAMS: False
+  DISABLE_CRONJOB: False
+Dev:
+  <<: *default
+  LoggerDebugLevel: debug
+
+Prod:
+  <<: *default
+  LoggerDebugLevel: info

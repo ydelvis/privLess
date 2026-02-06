@@ -1,0 +1,78 @@
+service: shrink
+
+frameworkVersion: '3'
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  vars: ${file(vars/${self:custom.stage}.yml)}
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: eu-west-2
+  environment:
+    SLS_STAGE: ${self:custom.stage}
+    ROOT_PATH: ${self:custom.vars.DomainName}
+    DDB_Table: {Ref: LinkDB}
+  iam:
+    role:
+      statements:
+        - Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+          Resource:
+            "Fn::Join":
+              - ""
+              -
+                - "arn:aws:dynamodb:"
+                - Ref: "AWS::Region"
+                - ":"
+                - Ref: "AWS::AccountId"
+                - ":table/"
+                - Ref: LinkDB
+          Effect: Allow
+
+functions:
+  health:
+    handler: src/index.health
+    events:
+      - http:
+          path: /
+          method: get
+  create:
+    handler: src/index.create
+    events:
+      - http:
+          path: /
+          method: post
+  redirect:
+    handler: src/index.redirect
+    events:
+      - http:
+          path: /{slug}
+          method: get
+
+resources:
+  Resources:
+    LinkDB:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: slug
+            AttributeType: S
+        KeySchema:
+          - AttributeName: slug
+            KeyType: HASH
+        ProvisionedThroughput: ${self:custom.vars.DynamoCapacity}
+    # To avoid bug: https://github.com/serverless/serverless/issues/2233
+    # Deploy with the CustomDomainMap section commented out, then redeploy with it uncommented
+    # There is a bug in the build dependencies and this is created too early
+    CustomDomainMap:
+      Type: "AWS::ApiGateway::BasePathMapping"
+      Properties:
+        DomainName: ${self:custom.vars.DomainName}
+        Stage: ${self:custom.stage}
+        RestApiId: {Ref: ApiGatewayRestApi}
+
+plugins:
+  - serverless-plugin-typescript

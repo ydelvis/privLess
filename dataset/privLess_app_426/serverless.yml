@@ -1,0 +1,108 @@
+service:
+  name: typescript-serverless
+
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+  serverless-iam-roles-per-function:
+    defaultInherit: true # Each function will inherit the service level roles too.
+  globalTables:
+    regions: # list of regions in which you want to set up global tables
+      - us-east-2 # Ohio (default region to date for stack)
+      - ap-southeast-2 # Sydney (lower latency for Australia)
+    createStack: true
+  prune:
+    automatic: true
+    number: 3
+
+
+
+plugins:
+  - serverless-offline
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-create-global-dynamodb-table
+  - serverless-prune-plugin
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: ${opt:stage, 'local'}
+  region: ${opt:region, 'us-east-2'}
+  apiGateway:
+    minimumCompressionSize: 1024 # Enable gzip compression for responses > 1 KB
+  environment:
+    DEBUG: '*'
+    NODE_ENV: ${self:provider.stage}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+  tracing:
+    lambda: true
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - xray:PutTraceSegments
+        - xray:PutTelemetryRecords
+      Resource: "*"
+
+
+# Importing resources from external yml can keep things cleaner
+resources:
+  - ${file(resources/dynamodb.yml)}
+  - ${file(resources/sqs.yml)}
+  - ${file(resources/sns.yml)}
+
+
+functions:
+  ApiGatewayProxyHandler:
+    handler: src/handlers/apiGatewayHandler.proxyHandler
+    events:
+      - http:
+          method: get
+          path: proxy
+    iamRoleStatements:
+      # Example if you need to Query against a GSI. You need to explicitly giver permission to access the GSI.
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt DynamoDBTable.Arn
+          - !Join [ '/', [ !GetAtt DynamoDBTable.Arn, index/gsi1 ] ]
+
+  SQSHandler:
+    handler: src/handlers/sqsHandler.handle
+    description: Example handler for SQS event source
+    timeout: 30
+    memorySize: 512
+    environment:
+      FOO: BAR
+    events:
+      - sqs:
+          arn: !GetAtt ExampleQueue.Arn
+          batchSize: 10
+    iamRoleStatements:
+      - Effect: Allow
+        Action: sqs:ReceiveMessage
+        Resource: !GetAtt ExampleQueue.Arn
+
+  DynamoDBStreamHandler:
+    handler: src/handlers/dynamoDBStreamHandler.handle
+    description: Example handler triggered by DynamoDB Streams
+    timeout: 10
+    memorySize: 512
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt DynamoDBTable.StreamArn
+          startingPosition: TRIM_HORIZON
+          maximumRetryAttempts: 2
+          batchSize: 20
+          batchWindow: 3
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:GetItem
+        Resource: !GetAtt DynamoDBTable.Arn
+    environment:
+      DYNAMODB_TABLE: !Ref DynamoDBTable

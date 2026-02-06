@@ -1,0 +1,219 @@
+service: StackJanitor${self:custom.NAME_SUFFIX}
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-step-functions
+
+custom:
+  DYNAMO_DB_TABLE: stackJanitorTable
+  DEFAULT_EXPIRATION_PERIOD: 604800 # 604800 seconds === 7 days
+  DEFAULT_REGION: "ap-southeast-2"
+  MAX_CLEANUP_RETRY: 2 # maximum number of retries before abandoning deletion
+  NAME_SUFFIX: ${env:NAME_SUFFIX, ''}
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  memorySize: 128
+  stage: ${opt:stage, 'development'}
+  region: ${self:custom.DEFAULT_REGION}
+  tracing:
+    lambda: true
+    apiGateway: true
+  deploymentBucket:
+    name: ${env:SLS_DEPLOY_BUCKET, 'stackjanitor-serverless-deployment-bucket'}
+  deploymentPrefix: ${env:SLS_DEPLOY_PREFIX, 'StackJanitor'}
+  iam:
+    role:
+      statements:
+      - Effect: "Allow"
+        Action:
+          - "dynamodb:DescribeTable"
+          - "dynamodb:Query"
+          - "dynamodb:Scan"
+          - "dynamodb:GetItem"
+          - "dynamodb:PutItem"
+          - "dynamodb:UpdateItem"
+          - "dynamodb:DeleteItem"
+        Resource: "arn:aws:dynamodb:*:*:table/${self:custom.DYNAMO_DB_TABLE}${self:custom.NAME_SUFFIX}"
+      - Effect: "Allow"
+        Action:
+          - "dynamodb:List*"
+          - "dynamodb:Delete*"
+          - "dynamodb:Describe*"
+        Resource: "*"
+      - Effect: "Allow"
+        Action:
+          - "cloudformation:DescribeStack*"
+          - "cloudformation:DeleteStack*"
+          - "cloudformation:ListStacks"
+        Resource: "*"
+      - Effect: "Allow"
+        Action:
+          - "elasticache:Delete*"
+          - "elasticache:Describe*"
+          - "ec2:*"
+          - "s3:*"
+          - "ecs:*"
+          - "sqs:*"
+          - "sns:*"
+          - "elasticloadbalancing:*"
+          - "elasticloadbalancing:*"
+          - "elasticloadbalancingv2:*"
+          - "logs:*"
+          - "events:*"
+          - "kinesis:*"
+          - "route53:*"
+          - "cloudwatch:*"
+          - "application-autoscaling:*"
+          - "autoscaling:*"
+          - "apigateway:*"
+          - "lambda:Get*"
+          - "lambda:Delete*"
+          - "lambda:Remove*"
+          - "glue:Delete*"
+          - "glue:Stop*"
+          - "iam:DetachRolePolicy"
+          - "iam:DeleteRolePolicy"
+          - "iam:DeleteRole"
+          - "iam:DeletePolicy"
+          - "iam:DeleteGroupPolicy"
+          - "iam:DeletePolicyVersion"
+          - "cloudfront:*"
+        Resource: "*"
+      - Effect: "Allow"
+        Action:
+          - "lambda:Invoke*"
+        Resource: "${env:EXTERNAL_LAMBDA}"
+
+resources:
+  Resources:
+    stackJanitorTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      UpdateReplacePolicy: Retain
+      Properties:
+        TableName: ${self:custom.DYNAMO_DB_TABLE}${self:custom.NAME_SUFFIX}
+        AttributeDefinitions:
+          - AttributeName: stackName
+            AttributeType: S
+          - AttributeName: stackId
+            AttributeType: S
+
+        KeySchema:
+          - AttributeName: stackName
+            KeyType: HASH
+          - AttributeName: stackId
+            KeyType: RANGE
+
+        TimeToLiveSpecification:
+          AttributeName: expirationTime
+          Enabled: true
+
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+
+functions:
+  logCloudFormationStack:
+    handler: src/handlers/logCloudFormationStack.index
+    environment:
+      NODE_OPTIONS: "--experimental-specifier-resolution=node"
+
+  monitorCloudFormationStack:
+    handler: src/handlers/monitorCloudFormationStack.index
+    environment:
+      DEFAULT_DYNAMODB_TABLE: ${self:custom.DYNAMO_DB_TABLE}${self:custom.NAME_SUFFIX}
+      DEFAULT_EXPIRATION_PERIOD: ${self:custom.DEFAULT_EXPIRATION_PERIOD}
+      DEFAULT_REGION: ${self:custom.DEFAULT_REGION}
+      MAX_CLEANUP_RETRY: ${self:custom.MAX_CLEANUP_RETRY}
+      NODE_OPTIONS: "--experimental-specifier-resolution=node"
+
+  gitHook:
+    handler: src/handlers/gitHook.index
+    environment:
+      EXTERNAL_LAMBDA: ${env:EXTERNAL_LAMBDA}
+      NODE_OPTIONS: "--experimental-specifier-resolution=node"
+    events:
+      - http:
+          path: /deleteStack
+          method: post
+
+  deleteCloudFormationStack:
+    handler: src/handlers/deleteCloudFormationStack.index
+    environment:
+      DEFAULT_DYNAMODB_TABLE: ${self:custom.DYNAMO_DB_TABLE}${self:custom.NAME_SUFFIX}
+      DEFAULT_EXPIRATION_PERIOD: ${self:custom.DEFAULT_EXPIRATION_PERIOD}
+      DEFAULT_REGION: ${self:custom.DEFAULT_REGION}
+      MAX_CLEANUP_RETRY: ${self:custom.MAX_CLEANUP_RETRY}
+      NODE_OPTIONS: "--experimental-specifier-resolution=node"
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [stackJanitorTable, StreamArn]
+
+  searchDeleteCloudformationStack:
+    handler: src/optional-handlers/searchDeleteCloudformationStack.handler
+    environment:
+      DEFAULT_EXPIRATION_PERIOD: ${self:custom.DEFAULT_EXPIRATION_PERIOD}
+      DEFAULT_REGION: ${self:custom.DEFAULT_REGION}
+      NODE_OPTIONS: "--experimental-specifier-resolution=node"
+    events:
+      - schedule: 
+          rate: cron(0 10 * * ? *)
+          enabled: ${env:SCHEDULE_ENABLE, 'false'}
+
+stepFunctions:
+  stateMachines:
+    StackJanitor:
+      name: StackJanitorStateMachine${self:custom.NAME_SUFFIX}
+      definition:
+        Comment: "StackJanitor State Machine"
+        StartAt: logCloudFormationStack
+        States:
+          logCloudFormationStack:
+            Type: Task
+            Next: checkStackJanitorTag
+            Resource: arn:aws:lambda:${aws:region}:${aws:accountId}:function:${self:service}-${opt:stage}-logCloudFormationStack
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                Next: EndStackMonitoring
+
+          checkStackJanitorTag:
+            Type: Choice
+            Choices:
+              - Variable: $.results.stackjanitor
+                StringEquals: enabled
+                Next: MonitorStack
+            Default: EndStackMonitoring
+
+          EndStackMonitoring:
+            Type: Pass
+            End: true
+
+          MonitorStack:
+            Type: Task
+            Next: EndStackMonitoring
+            Resource: arn:aws:lambda:${aws:region}:${aws:accountId}:function:${self:service}-${opt:stage}-monitorCloudFormationStack
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                Next: EndStackMonitoring
+
+      events:
+        - cloudwatchEvent:
+            event:
+              source: 
+                - "aws.cloudformation"
+              detail:
+                eventSource:
+                  - "cloudformation.amazonaws.com"
+                eventName:
+                  - "CreateStack"
+                  - "UpdateStack"
+                  - "DeleteStack"

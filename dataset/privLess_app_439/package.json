@@ -1,0 +1,36 @@
+{
+    "name": "sample-dynamo",
+    "version": "0.0.1",
+    "main": "build/index.js",
+    "types": "build/index.d.js",
+    "license": "MIT",
+    "scripts": {
+        "build": "yarn run lint && yarn run test",
+        "lint": "../../node_modules/tslint/bin/tslint --fix src/**/*.ts",
+        "clean": "rimraf ./.build",
+        "dev": "yarn run sls-offline",
+        "prebuild": "yarn run clean",
+        "predev": "yarn run clean",
+        "test": "jest -c ../../jest.json --coverage",
+        "sls-deploy":
+            "yarn run build && node --require ../../dotenv.js ../../node_modules/serverless/bin/serverless deploy -v",
+        "sls-offline":
+            "yarn run build && node --require ../../dotenv.js ../../node_modules/serverless/bin/serverless offline -v",
+        "sls-remove":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless remove -v",
+        "sls-remove-alias":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless alias remove -v",
+        "sls-logs":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless logs -v -t",
+        "sls-dynamodb-install":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless dynamodb install",
+        "sls-dynamodb-start":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless dynamodb start --migrate",
+        "sls-dynamodb-remove":
+            "node --require ../../dotenv.js  ../../node_modules/serverless/bin/serverless dynamodb remove",
+        "sls-perf":
+            "rimraf ../../output/artillery/${npm_package_name} && mkdir -p ../../output/artillery/${npm_package_name} && node ../../node_modules/artillery/bin/artillery run -o ../../output/artillery/${npm_package_name}/artillery-report.json artillery.yml",
+        "sls-perf-report":
+            "node ../../node_modules/artillery/bin/artillery report ../../output/artillery/${npm_package_name}/artillery-report.json -o ../../output/artillery/${npm_package_name}/artillery-report.html"
+    }
+}

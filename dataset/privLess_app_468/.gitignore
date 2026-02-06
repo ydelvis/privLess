@@ -1,0 +1,6 @@
+.serverless
+node_modules
+.build
+.vscode
+scripts/set-env.sh
+.DS_Store

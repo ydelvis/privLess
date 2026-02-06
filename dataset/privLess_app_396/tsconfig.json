@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "declaration": false,
+    "noImplicitAny": false,
+    "removeComments": true,
+    // "noLib": false,
+    // "noEmit": false,
+    "allowSyntheticDefaultImports": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "target": "es6",
+    "types": [
+      "node",
+      "jest"
+    ],
+    "sourceMap": true,
+    // "allowJs": true,
+    // "outDir": "./dist",
+    "baseUrl": "./src",
+    "skipLibCheck": true
+  },
+  // "include": [
+  //   "src/**/*"
+  // ],
+  "exclude": [
+    "node_modules",
+    "webpack",
+    // "**/*.spec.ts"
+  ]
+}

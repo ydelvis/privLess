@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "outDir": "./.build",
+    "baseUrl": "./src",
+    "paths": {
+      "@api/*": ["./api/*"],
+      "@models/*": ["./models/*"],
+      "@lib/*": ["./lib/*"],
+      "@parsers/*": ["./lib/parsers/*"],
+      "@utils/*": ["./utils/*"]
+    }
+  },
+  "exclude": [".serverless", ".webpack", "node_modules"],
+  "types": ["node", "aws-sdk"]
+}

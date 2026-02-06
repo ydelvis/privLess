@@ -1,0 +1,74 @@
+service: heimdall
+
+plugins:
+  - serverless-plugin-typescript
+
+custom:
+  bucket: heimdall${file(lib/env.js):serverless.stage}${file(lib/env.js):serverless.awsId}
+  bucketRef: S3BucketHeimdall${file(lib/env.js):serverless.stage}${file(lib/env.js):serverless.awsId}
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${file(lib/env.js):serverless.stage}
+  region: us-west-2
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:*
+        - dynamodb:*
+        - ses:*
+      Resource: "*"
+
+functions:
+  incoming:
+    handler: functions/receipt.handler
+    environment:
+      AWS_ID: ${file(lib/env.js):serverless.awsId}
+      AWS_SMTP_HOST: ${file(lib/env.js):serverless.awsSmtpHost}
+      AWS_SMTP_PORT: ${file(lib/env.js):serverless.awsSmtpPort}
+      AWS_SMTP_USER: ${file(lib/env.js):serverless.awsSmtpUser}
+      AWS_SMTP_PASS: ${file(lib/env.js):serverless.awsSmtpPass}
+      BASE_DOMAIN: ${file(lib/env.js):serverless.baseDomain}
+      DEV_SUBDOMAIN: ${file(lib/env.js):serverless.devSubdomain}
+      EMAIL: ${file(lib/env.js):serverless.email}
+      STAGE: ${file(lib/env.js):serverless.stage}
+    events:
+      - s3:
+          bucket: ${self:custom.bucket}
+          event: s3:ObjectCreated:*
+
+resources:
+  Resources:
+    S3BucketPermissions:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: ${self:custom.bucketRef}
+        PolicyDocument:
+          Statement:
+            - Principal:
+                Service: "ses.amazonaws.com"
+              Action:
+                - s3:PutObject
+              Effect: Allow
+              Sid: "AllowSESPuts"
+              Resource:
+                Fn::Join:
+                  ["", ["arn:aws:s3:::", Ref: "${self:custom.bucketRef}", "/*"]]
+              Condition:
+                StringEquals:
+                  "aws:Referer": { Ref: AWS::AccountId }
+    aliases:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${file(lib/config.js):serverless.tableName}
+        AttributeDefinitions:
+          - AttributeName: alias
+            AttributeType: S
+        KeySchema:
+          - AttributeName: alias
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

@@ -1,0 +1,12 @@
+# package directories
+node_modules
+jspm_packages
+
+# Serverless directories
+.serverless
+
+# Template for environment variables
+!.envrc.skeleton
+
+# build directory
+.build

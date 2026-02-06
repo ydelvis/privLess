@@ -1,0 +1,74 @@
+openapi: 3.0.0
+info:
+  title: Converted from result.yml with typeconv
+  version: '1'
+  x-id: result.yml
+  x-comment: >-
+    Generated from src/models/result.ts by core-types-json-schema
+    (https://github.com/grantila/core-types-json-schema) on behalf of typeconv
+    (https://github.com/grantila/typeconv)
+paths: {}
+components:
+  schemas:
+    Result:
+      properties:
+        url:
+          title: Result.url
+          type: string
+        id:
+          title: Result.id
+          type: string
+        image:
+          title: Result.image
+          type: string
+        name:
+          title: Result.name
+          type: string
+        sku:
+          title: Result.sku
+          type: string
+        keywords:
+          title: Result.keywords
+          type: string
+        description:
+          title: Result.description
+          type: string
+        schema:
+          title: Result.schema
+        priceChangeType:
+          $ref: '#/components/schemas/PriceChange'
+          title: Result.priceChangeType
+        priceChange:
+          title: Result.priceChange
+          type: number
+        prices:
+          items:
+            $ref: '#/components/schemas/PriceSpecification'
+            title: Result.prices.[]
+          title: Result.prices
+          type: array
+        meta:
+          $ref: '#/components/schemas/Meta'
+          title: Result.meta
+      required:
+        - url
+      additionalProperties: false
+      title: Result
+      type: object
+    Meta:
+      properties:
+        parser:
+          title: Meta.parser
+          type: string
+        createdDate:
+          title: Meta.createdDate
+          type: string
+        modifiedDate:
+          title: Meta.modifiedDate
+          type: string
+        version:
+          title: Meta.version
+          type: number
+      additionalProperties: false
+      title: Meta
+      type: object

@@ -1,0 +1,18 @@
+<import src="../../wxParse/wxParse.wxml"/>
+<view class="weui-cells__title" size="mini">（点击复制文本）</view>
+<view class="results" bindtap="copyCode">
+  <template is="wxParse" data="{{wxParseData:article.nodes}}"/>
+</view>
+
+<view class="weui-footer weui-footer_fixed-bottom">
+  <button class="weui-btn mini-btn" bindtap="forkCode" size="mini" type="primary"> 修改 </button>
+  <block wx:if="{{isCurrent}}">
+    <button bindtap="deleteCode" class="weui-btn mini-btn" size="mini" type="warn"> 刪除 </button>
+  </block>
+    <button class="weui-btn mini-btn" bindtap="getCodeId" size="mini" type="default"> 复制 ID </button>
+  <view>@Phodal</view>
+</view>
+
+<loading hidden="{{!isLoading}}">
+  加载中...
+</loading>

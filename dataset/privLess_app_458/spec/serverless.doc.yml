@@ -1,0 +1,80 @@
+documentation:
+  title: openwishlist-preview
+  description: Link Preview API
+  version: 0.6.0
+  tags:
+    - name: "serverless"
+    - name: "serverless-framework"
+    - name: "link-preview"
+    - name: "scraping"
+    - name: "nodejs"
+    - name: "aws"
+  servers:
+    - url: https://preview.api.play.adapttive.com/dev
+      description: Dev server (uses live data)
+    - url: https://preview.api.play.adapttive.com
+      description: Live server (uses live data)
+
+  models:
+    - name: "GetLinkPreviewResponse"
+      description: "Link Preview Response Model"
+      contentType: "application/json"
+      schema:
+        properties:
+          data:
+            properties:
+              id:
+                title: Result.id
+                type: string
+              url:
+                title: Result.url
+                type: string
+              image:
+                title: Result.data.image
+                type: string
+              name:
+                title: Result.data.name
+                type: string
+              sku:
+                title: Result.data.sku
+                type: string
+              keywords:
+                title: Result.data.keywords
+                type: string
+              description:
+                title: Result.data.description
+                type: string
+              prices:
+                title: Result.data.prices
+                $ref: 'spec/models/Prices.json'
+              priceChangeType:
+                title: Result.data.priceChangeType
+                $ref: 'spec/models/PriceChange.json'
+              priceChange:
+                title: Result.data.priceChange
+                type: string
+              schema:
+                title: Result.data.schema
+                type: object
+              meta:
+                $ref: 'spec/models/Meta.json'
+                title: Result.data.meta    
+            additionalProperties: false
+            type: object
+            title: Result.data
+            required:
+              - url
+              - id
+          meta:
+            $ref: 'spec/models/Meta.json'
+            title: Result.meta 
+          status: 
+            title: Result.status
+            type: number
+        required:
+          - data
+          - meta
+          - status
+        additionalProperties: false
+        title: Result
+        type: object

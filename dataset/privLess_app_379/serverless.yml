@@ -1,0 +1,261 @@
+service: laconia-acceptance
+
+plugins:
+  - serverless-esbuild
+  - serverless-s3-remover
+  - serverless-s3-sync
+  - serverless-plugin-tracing
+
+package:
+  individually: true
+
+provider:
+  name: aws
+  runtime: nodejs${env:NODE_VERSION, '20' }.x
+  stage: node${env:NODE_VERSION, '20' }
+  region: ${env:AWS_REGION, 'us-east-1'}
+  tracing: true
+  apiGateway:
+    binaryMediaTypes:
+      - "*/*"
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - s3:*
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "lambda:InvokeFunction"
+        - "lambda:InvokeAsync"
+        - "dynamodb:Scan"
+        - "dynamodb:Query"
+        - "dynamodb:PutItem"
+        - "dynamodb:DeleteItem"
+        - "xray:PutTraceSegments"
+        - "xray:PutTelemetryRecords"
+      Resource: "*"
+    - Effect: Allow
+      Action: sns:Publish
+      Resource:
+        - arn:aws:sns:${aws:region}:${aws:accountId}:${self:custom.restaurantNotificationTopicName}
+    - Effect: "Allow"
+      Action:
+        - "ssm:GetParameters"
+      Resource: "arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/${self:custom.fullName}/*"
+    - Effect: "Allow"
+      Action:
+        - kinesis:PutRecord
+      Resource: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/${self:custom.orderEventsStreamName}
+    - Effect: Allow
+      Action:
+        - sqs:*
+      Resource: arn:aws:sqs:${aws:region}:${aws:accountId}:${self:custom.userEmailQueueName}
+  environment:
+    TRACKER_BUCKET_NAME: ${self:custom.trackerBucketName}
+    LACONIA_TEST_SPY_BUCKET: ${self:custom.trackerBucketName}
+
+custom:
+  accountId: ${file(./src/sts.js):getAccountId}
+  fullName: ${self:service}-${self:provider.stage}
+  trackerBucketName: ${self:custom.fullName}-${self:custom.accountId}-tracker
+  totalOrderBucketName: ${self:custom.fullName}-${self:custom.accountId}-total-order
+  userEmailQueueName: ${self:custom.fullName}-user-email-queue
+  restaurantBucketName: ${self:custom.fullName}-${self:custom.accountId}-restaurant
+  orderEventsStreamName: ${self:custom.fullName}-order-events
+  restaurantNotificationTopicName: ${self:custom.fullName}-restaurant-notification
+  orderDynamoDbBatchTableName: ${self:custom.fullName}-order
+  connectionDynamoDbTableName: ${self:custom.fullName}-connection
+  remover:
+    buckets:
+      - ${self:custom.trackerBucketName}
+      - ${self:custom.totalOrderBucketName}
+  s3Sync:
+    - bucketName: ${self:custom.restaurantBucketName}
+      localDir: src/resources
+  esbuild:
+    exclude: []
+  apigatewayUrl:
+    Fn::Join:
+      - ""
+      - - "https://"
+        - Ref: "ApiGatewayRestApi"
+        - ".execute-api.${aws:region}.amazonaws.com/${self:provider.stage}"
+  webSocketEndpoint:
+    Fn::Join:
+      - ""
+      - - "https://"
+        - Ref: "WebsocketsApi"
+        - ".execute-api.${aws:region}.amazonaws.com/${self:provider.stage}"
+
+functions:
+  place-order:
+    handler: src/place-order.handler
+    events:
+      - http:
+          path: order
+          method: post
+      - schedule:
+          name: warmer-schedule-name
+          rate: rate(30 days)
+          enabled: true
+          input:
+            warmer: true
+            concurrency: 1
+    environment:
+      ORDER_TABLE_NAME: ${self:custom.orderDynamoDbBatchTableName}
+      ORDER_STREAM_NAME: ${self:custom.orderEventsStreamName}
+      LACONIA_CONFIG_API_KEY: ssm:/${self:custom.fullName}/apikey
+      LACONIA_CONFIG_RESTAURANTS: s3:${self:custom.restaurantBucketName}/restaurants.json
+      LACONIA_CONFIG_ENABLED: boolean:true
+  accept-order:
+    handler: src/accept-order.handler
+    events:
+      - http:
+          path: order/{id}/accept
+          method: put
+    environment:
+      ORDER_STREAM_NAME: ${self:custom.orderEventsStreamName}
+  process-card-payments:
+    timeout: 6 # Force recursion
+    handler: src/process-card-payments.handler
+    environment:
+      LACONIA_INVOKER_CAPTURE_CARD_PAYMENT: ${self:custom.fullName}-capture-card-payment
+      ORDER_TABLE_NAME: ${self:custom.orderDynamoDbBatchTableName}
+  capture-card-payment:
+    handler: src/capture-card-payment.handler
+  calculate-total-order:
+    timeout: 6 # Force recursion
+    handler: src/calculate-total-order.handler
+    environment:
+      RESTAURANT_BUCKET_NAME: ${self:custom.restaurantBucketName}
+      TOTAL_ORDER_BUCKET_NAME: ${self:custom.totalOrderBucketName}
+      ORDER_TABLE_NAME: ${self:custom.orderDynamoDbBatchTableName}
+  convert-total-order-to-xml:
+    handler: src/convert-total-order-to-xml.handler
+    environment:
+      TOTAL_ORDER_BUCKET_NAME: ${self:custom.totalOrderBucketName}
+    events:
+      - s3:
+          bucket: ${self:custom.totalOrderBucketName}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: json/
+  notify-restaurant:
+    handler: src/notify-restaurant.handler
+    environment:
+      TOTAL_ORDER_BUCKET_NAME: ${self:custom.totalOrderBucketName}
+      RESTAURANT_NOTIFICATION_TOPIC_ARN: arn:aws:sns:${aws:region}:${aws:accountId}:${self:custom.restaurantNotificationTopicName}
+    events:
+      - stream:
+          type: kinesis
+          arn: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/${self:custom.orderEventsStreamName}
+  notify-user:
+    handler: src/notify-user.handler
+    environment:
+      USER_EMAIL_QUEUE_URL:
+        Ref: UserEmailQueue
+    events:
+      - stream:
+          type: kinesis
+          arn: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/${self:custom.orderEventsStreamName}
+  send-email:
+    handler: src/send-email.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - UserEmailQueue
+              - Arn
+  fake-restaurant:
+    handler: src/fake-restaurant.handler
+    events:
+      - sns:
+          topicName: ${self:custom.restaurantNotificationTopicName}
+          arn:
+            Ref: RestaurantNotificationTopic
+    environment:
+      API_BASE_URL: ${self:custom.apigatewayUrl}
+
+  update-user:
+    handler: src/update-user.handler
+    events:
+      - stream:
+          type: kinesis
+          arn: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/${self:custom.orderEventsStreamName}
+    environment:
+      CONNECTION_TABLE_NAME: ${self:custom.connectionDynamoDbTableName}
+      WEBSOCKET_ENDPOINT: ${self:custom.webSocketEndpoint}
+  update-user-receipt:
+    handler: src/update-user-receipt.handler
+    events:
+      - websocket:
+          route: $default
+    environment:
+      WEBSOCKET_ENDPOINT: ${self:custom.webSocketEndpoint}
+  connect-websocket:
+    handler: src/connect-websocket.handler
+    events:
+      - websocket:
+          route: $connect
+    environment:
+      CONNECTION_TABLE_NAME: ${self:custom.connectionDynamoDbTableName}
+  disconnect-websocket:
+    handler: src/disconnect-websocket.handler
+    events:
+      - websocket:
+          route: $disconnect
+    environment:
+      CONNECTION_TABLE_NAME: ${self:custom.connectionDynamoDbTableName}
+  download-image:
+    handler: src/download-image.handler
+    events:
+      - http:
+          path: image
+          method: get
+
+resources:
+  Resources:
+    S3Tracker:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.trackerBucketName}
+    RestaurantBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.restaurantBucketName}
+    OrderEventsStream:
+      Type: AWS::Kinesis::Stream
+      Properties:
+        Name: ${self:custom.orderEventsStreamName}
+        ShardCount: 1
+    RestaurantNotificationTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ${self:custom.restaurantNotificationTopicName}
+        TopicName: ${self:custom.restaurantNotificationTopicName}
+    UserEmailQueue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: ${self:custom.userEmailQueueName}
+    OrderTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "orderId"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "orderId"
+            KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.orderDynamoDbBatchTableName}
+    ConnectionTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "connectionId"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "connectionId"
+            KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.connectionDynamoDbTableName}

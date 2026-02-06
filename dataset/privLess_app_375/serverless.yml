@@ -1,0 +1,152 @@
+service: code
+
+plugins:
+  - serverless-domain-manager
+  - serverless-apigw-binary
+
+package:
+  exclude:
+    - test/**
+    - weapp/**
+    - yarn-error.log
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  customDomain:
+    domainName: code.wdsm.io
+    basePath: ''
+    certificateName: '*.wdsm.io'
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+  apigwBinary:
+    types:
+      - 'image/jpeg'
+      - 'image/png'
+      - 'text/html'
+      - 'multipart/form-data'
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  memorySize: 256
+  timeout: 5
+  environment:
+    S3: ${self:service}-storage-${opt:stage, self:provider.stage}
+    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    SLS_STAGE: ${self:custom.stage}
+  iamRoleStatements:
+    - Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+      Effect: Allow
+    - Effect: Allow
+      Action:
+        - "s3:*"
+      Resource: "arn:aws:s3:::${self:provider.environment.S3}/*"
+    - Effect: "Allow"
+      Action:
+        - "rekognition:*"
+      Resource: "*"
+
+functions:
+  verify:
+    handler: server/verify.handler
+    events:
+      - http:
+          path: /lfbMzPgFjx.txt
+          method: get
+  main:
+    handler: server/index.handler
+    events:
+      - http:
+          path: /
+          method: get
+  features:
+    handler: server/features.handler
+    events:
+      - http:
+          path: /features
+          method: get
+  create:
+    handler: server/create.create
+    events:
+      - http:
+          path: /
+          method: post
+          cors: true
+  login:
+    handler: server/login.login
+    events:
+      - http:
+          path: /login
+          method: get
+          cors: true
+  userCode:
+    handler: server/code.list
+    events:
+      - http:
+          path: user/{userId}
+          method: get
+  code:
+    handler: server/code.detail
+    events:
+      - http:
+          path: code/{codeId}
+          method: get
+  updateCode:
+    handler: server/code.update
+    events:
+      - http:
+          path: code/{codeId}
+          method: post
+  deleteCode:
+    handler: server/code.delete
+    events:
+      - http:
+          path: code/{codeId}
+          method: delete
+  upload:
+    handler: server/upload.upload
+    events:
+      - http:
+          path: upload
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    LinkDB:
+      Type: "AWS::DynamoDB::Table"
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+    UploadBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.S3}
+        AccessControl: PublicRead
+        CorsConfiguration:
+          CorsRules:
+          - AllowedMethods:
+            - GET
+            - PUT
+            - POST
+            - HEAD
+            AllowedOrigins:
+            - "*"
+            AllowedHeaders:
+            - "*"

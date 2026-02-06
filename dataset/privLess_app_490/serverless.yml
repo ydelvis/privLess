@@ -1,0 +1,78 @@
+service: naip-cogeo-mosaic
+
+provider:
+  name: aws
+  runtime: python3.7
+  stage: ${opt:stage, 'production'}
+  region: "us-west-2"
+
+  deploymentBucket: ${opt:bucket}
+  httpApi:
+    cors: true
+
+  # Add Tags to resources
+  stackTags:
+    Project: cogeo
+
+  apiGateway:
+    binaryMediaTypes:
+      - "*/*"
+    minimumCompressionSize: 1
+
+  # Add other buckets here if needed
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:GetObject"
+        - "s3:HeadObject"
+        - "s3:PutObject"
+      Resource:
+        - "arn:aws:s3:::${self:provider.deploymentBucket}*"
+
+    - Effect: "Allow"
+      Action:
+        - "s3:GetObject"
+        - "s3:HeadObject"
+      Resource:
+        - "arn:aws:s3:::*"
+
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:GetItem"
+      Resource:
+        # Allow access to all dynamodb tables in region
+        - "arn:aws:dynamodb:${self:provider.region}:${opt:aws-account-id, '961053664803'}:table/*"
+
+package:
+  artifact: cogeo-mosaic-tiler/package.zip
+
+functions:
+  app:
+    handler: cogeo_mosaic_tiler.handlers.app.app
+    memorySize: 1536
+    timeout: 8
+    layers:
+      - arn:aws:lambda:${self:provider.region}:524387336408:layer:gdal24-py37-geolayer:1
+    environment:
+      # Necessary since NAIP bucket is requester-pays
+      AWS_REQUEST_PAYER: requester
+      CACHE_CONTROL: ${opt:cache-control, 'max-age=3600'}
+      CPL_TMPDIR: /tmp
+      CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF
+      GDAL_CACHEMAX: 25%
+      GDAL_DATA: /opt/share/gdal
+      # https://github.com/OSGeo/gdal/issues/909#issuecomment-420036545
+      GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+      GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES
+      GDAL_HTTP_MULTIPLEX: YES
+      GDAL_HTTP_VERSION: 2
+      MAX_THREADS: 1
+      MOSAIC_DEF_BUCKET: ${self:provider.deploymentBucket}
+      PROJ_LIB: /opt/share/proj
+      PYTHONWARNINGS: ignore
+      VSI_CACHE: TRUE
+      VSI_CACHE_SIZE: 536870912
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: "*"

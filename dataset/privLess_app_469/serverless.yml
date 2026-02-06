@@ -1,0 +1,97 @@
+service:
+  name: karate-scraper
+plugins:
+  - serverless-pseudo-parameters
+  - serverless-webpack
+  - serverless-dynamodb-local
+  - serverless-offline
+
+custom:
+  webpackIncludeModules: true
+  prefix: ${self:service}-${self:custom.stage}
+  stage: ${opt:stage, self:provider.stage}
+  task_table: ${self:custom.prefix}-task
+  isVersionFunctions-prod: true
+  isVersionFunctions-default: false
+  start:
+    seed: true
+    inMemory: true
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: us-east-1
+  stage: test
+  profile: karate
+  deploymentBucket: karate-sls-bucket
+  versionFunctions: ${self:custom.isVersionFunctions-${self:custom.stage}, self:custom.isVersionFunctions-default}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+      - dynamodb:*
+      Resource: arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:custom.task_table}
+  environment:
+    region: ${self:provider.region}
+    stage: ${self:custom.stage}
+    task_table: ${self:custom.task_table}
+
+functions:
+  scrape:
+    handler: handler.scrape
+    timeout: 300
+    memorySize: 1536
+    events:
+      - stream: arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:custom.task_table}/stream/2018-04-12T18:35:24.626
+
+  addTask:
+    handler: handler.addTask
+    events:
+      - http:
+          method: post
+          path: tasks
+          cors: true
+
+  getResult:
+    handler: handler.getResult
+    events:
+      - http:
+          method: get
+          path: results/{id}
+          cors: true
+
+  findExpression:
+    handler: handler.findExpression
+    events:
+      - http:
+          method: post
+          path: expression
+          cors: true
+
+resources:
+  Resources:
+    TaskTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.task_table}
+        KeySchema:
+          -
+            AttributeName: task_id
+            KeyType: HASH
+          -
+            AttributeName: timestamp
+            KeyType: RANGE
+        AttributeDefinitions:
+          -
+            AttributeName: task_id
+            AttributeType: S
+          -
+            AttributeName: timestamp
+            AttributeType: N
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: timestamp
+          Enabled: true
