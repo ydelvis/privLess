@@ -25,7 +25,7 @@ PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract AW
 
 ```bash
 # Clone the repository
-git clone <repo-url> privLess
+git clone https://github.com/ydelvis/privLess.git privLess
 cd privLess
 
 # Install Python dependencies
