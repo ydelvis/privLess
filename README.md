@@ -25,7 +25,7 @@ PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract AW
 
 ```bash
 # Clone the repository
-git clone https://github.com/ydelvis/privLess.git privLess
+git clone <repo-url> privLess
 cd privLess
 
 # Install Python dependencies
@@ -60,7 +60,7 @@ A sample serverless application is included for testing:
 
 ```bash
 # Create an apps list pointing to the case study app
-echo '["../case-study-app/aws-node-http-api-dynamodb-local"]' > apps.json
+echo '["../case-study-app/aws-node-http-api-dynamodb-local"]' > ../apps.json
 
 # Run analysis on it
 cd src
