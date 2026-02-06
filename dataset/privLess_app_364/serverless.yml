@@ -1,0 +1,97 @@
+service: aws-stepfunctions-demo
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:*"
+      Resource: "arn:aws:s3:::stepfunctions-demo-source-bucket/*"
+    - Effect: "Allow"
+      Action:
+        - "s3:*"
+      Resource: "arn:aws:s3:::stepfunctions-demo-target-bucket/*"
+    - Effect: "Allow"
+      Action:
+        - "states:*"
+      Resource: "*" 
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:*"
+      Resource: "*"      
+    - Effect: "Allow"
+      Action:
+        - "ses:*"
+      Resource: "*"            
+
+functions:
+  processFile:
+    timeout: 30
+    memory: 256
+    handler: handler.processFile
+  moveFile:
+    handler: handler.moveFile
+    environment:
+      TARGET_BUCKET: stepfunctions-demo-target-bucket    
+  sendEmail:
+    handler: handler.sendEmail
+    environment:
+      DEST_EMAIL: test@example.com    
+  executeWorkflow:
+    handler: handler.executeWorkflow
+    environment:
+      STEP_FUNCTION_NAME: aws-stepfunctions-demo-dev-stepfunctionsdemo   
+    events:
+      - s3:
+          bucket: stepfunctions-demo-source-bucket
+          event: s3:ObjectCreated:*        
+
+
+stepFunctions:
+  stateMachines:
+    stepfunctionsdemo:
+      Comment: "Example StepFunction"
+      StartAt: ProcessFile
+      States: 
+        ProcessFile: 
+          Type: Task
+          Resource: processFile
+          Next: MoveFile      
+        MoveFile: 
+          Type: Task
+          Resource: moveFile
+          Next: Wait10Minutes
+        Wait10Minutes:
+          Type: Wait
+          Seconds: 600
+          Next: SendEmail          
+        SendEmail:
+          Type: Task
+          Resource: sendEmail
+          End: true
+
+resources:
+  Resources:
+    TargetBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: stepfunctions-demo-target-bucket        
+    SensorDataTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: "sensor_id"
+          AttributeType: "S"
+        KeySchema:
+        - AttributeName: "sensor_id"
+          KeyType: "HASH"
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5        
+        TableName: "sensor_data"
+
+
+plugins:
+  - serverless-step-functions

@@ -1,0 +1,19 @@
+{
+    "extends": "airbnb",
+    "rules": {
+        "no-console": "off",
+        "no-unused-expressions": 0,
+        "chai-friendly/no-unused-expressions": 2
+    },
+    "globals": {
+        "expect": true
+    },
+    "plugins": [
+        "mocha",
+        "chai-expect",
+        "chai-friendly"
+    ],
+    "env": {
+        "mocha": true
+    }
+}

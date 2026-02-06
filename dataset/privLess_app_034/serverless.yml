@@ -1,0 +1,108 @@
+service: lambda-screenshots
+
+custom:
+  # change this, so it's unique for your setup
+  bucket_name: ${opt:stage,self:provider.stage}-${env:USER}-screenshots
+
+  stageVariables:
+    bucketName: ${self:custom.bucket_name}
+    endpoint: {"Fn::Join": ["", ["https://", { "Fn::GetAtt": "CloudFrontEndpoint.DomainName" }, "/"]]}
+    # timeout for phantomjs
+    screenshotTimeout: 3000
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+  stage: dev
+  region: us-east-1
+
+  # We need to lockdown the apigateway, so we can control who can use the api
+  apiKeys:
+    - app-api-key
+
+  # We need to give the lambda functions access to list and write to our bucket, it needs:
+  # - to be able to 'list' the bucket
+  # - to be able to upload a file (PutObject)
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:ListBucket"
+        - "s3:Put*"
+        - "s3:GetObject"
+      Resource:
+        - "arn:aws:s3:::${self:custom.bucket_name}"
+        - "arn:aws:s3:::${self:custom.bucket_name}/*"
+
+functions:
+  takeScreenshot:
+    handler: handler.take_screenshot
+    timeout: 15
+    events:
+      - http:
+          path: screenshots
+          method: post
+          # Marking the function as private will require an api-key
+          private: true
+
+          # The url parameter is mandatory
+          request:
+            parameters:
+              # headers:
+              #   foo: false
+              #   bar: true
+              querystrings:
+                url: true
+              # paths:
+              #   bar: false
+
+  listScreenshots:
+    handler: handler.list_screenshots
+    timeout: 15
+    events:
+      - http:
+          path: screenshots
+          method: get
+          private: true
+          request:
+            parameters:
+              querystrings:
+                url: true
+
+  createThumbnails:
+    handler: handler.create_thumbnails
+    events:
+      - s3:
+          bucket: ${self:custom.bucket_name}
+          event: s3:ObjectCreated:*
+
+resources:
+  Outputs:
+    ScreenshotBucket:
+      Description: "Screenshot bucket name"
+      Value: ${self:custom.bucket_name}
+    CloudFrontUrl:
+      Description: "CloudFront url"
+      Value: {"Fn::GetAtt": "CloudFrontEndpoint.DomainName"}
+  Resources:
+    # Create an endpoint for the S3 bucket in CloudFront
+    CloudFrontEndpoint:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: True
+          DefaultCacheBehavior:
+            TargetOriginId: ScreenshotBucketOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            ForwardedValues:
+              QueryString: True
+          Origins:
+            -
+              Id: ScreenshotBucketOrigin
+              DomainName: ${self:custom.bucket_name}.s3.amazonaws.com
+              CustomOriginConfig:
+                OriginProtocolPolicy: http-only
+
+
+plugins:
+  - serverless-plugin-stage-variables
+  - serverless-plugin-stack-outputs

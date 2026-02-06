@@ -1,0 +1,20 @@
+# faultline service name
+serviceName: faultline
+# AWS deploy region
+region: us-east-1
+# S3 bucket name
+s3BucketName: (EDITME)
+# Dynamodb table prefix
+dynamodbTablePrefix: faultline
+# Dynamodb Read Capacity Units
+dynamodbReadCapacityUnits: 1
+# Dynamodb Write Capacity Units
+dynamodbWriteCapacityUnits: 1
+# faultline API Key for full control (!This is not API Gateway API Key!)
+masterApiKey: (EDITME)
+# faultline API Key for POST errors only (!This is not API Gateway API Key!)
+clientApiKey: (EDITME)
+# Use AWS KMS Key to encrypt POST params (notifications) ( 0 or 1 )
+useKms: 0
+# AWS KMS Key alias
+kmsKeyAlias: faultline

@@ -1,0 +1,55 @@
+service: oidc-provider
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  versionFunctions: false
+  stage: ${env:ENV}
+  region: ${env:AWS_DEFAULT_REGION}
+  iamRoleStatements:
+    -  Effect: "Allow"
+       Action:
+         - "*"
+       Resource: arn:aws:dynamodb:${env:AWS_DEFAULT_REGION}:${env:AWS_ACCOUNT_ID}:table/${env:AWS_DYNAMODB_TABLE_NAME}
+    -  Effect: "Allow"
+       Action:
+         - "*"
+       Resource: arn:aws:cognito-idp:${env:AWS_DEFAULT_REGION}:${env:AWS_ACCOUNT_ID}:userpool/${env:AWS_COGNITO_USER_POOL_ID}
+
+functions:
+  oidc:
+    handler: handler.oidc
+    memorySize: 2048
+    environment:
+      DEBUG: oidc-provider:*  # Debugging of oidc-provider is enabled.
+      BABEL_CACHE_PATH: /tmp/.babel.json  # Set the write destination of the cache file on the tmp directory.
+      OIDC_ISSURE: ${env:OIDC_ISSURE}
+      SECURE_KEYS: ${env:SECURE_KEYS}
+      AWS_DYNAMODB_TABLE_NAME: ${env:AWS_DYNAMODB_TABLE_NAME}
+      AWS_COGNITO_USER_POOL_ID: ${env:AWS_COGNITO_USER_POOL_ID}
+      AWS_COGNITO_USER_POOL_CLIENT_ID: ${env:AWS_COGNITO_USER_POOL_CLIENT_ID}
+    events:
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors: true
+
+plugins:
+  - serverless-webpack
+
+custom:
+  packExternalModulesMaxBuffer: 400 * 1024
+  webpack:
+    includeModules:
+      packagePath: '../../../package.json'
+      forceInclude:
+        - 'oidc-provider'
+        - 'oidc-provider-dynamodb-adapter'
+        - 'koa'
+        - 'koa-compose'
+        - 'koa-logger'
+        - 'koa-mount'
+        - 'ejs'
+        - 'aws-serverless-express'
+      forceExclude:
+        - 'aws-sdk'

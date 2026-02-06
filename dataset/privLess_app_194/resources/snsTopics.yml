@@ -1,0 +1,23 @@
+Resources:
+  # AlarmsTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     DisplayName: 'Alarms topic for monitoring step function'
+  #     TopicName: ${self:custom.alarmsTopicName}
+  #     Subscription:
+  #       - Endpoint: ${self:custom.adminEmail}
+  #         Protocol: email
+
+  NotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: 'Notifications topic for monitoring step function'
+      TopicName: ${self:custom.notificationsTopicName}
+      Subscription:
+        - Endpoint: ${self:custom.adminEmail}
+          Protocol: email
+
+Outputs:
+  NotificationsTopicArn:
+    Value:
+      Ref: NotificationsTopic

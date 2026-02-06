@@ -1,0 +1,4 @@
+bin
+ecr-vuln-alert-lambda
+.DS_Store
+.serverless

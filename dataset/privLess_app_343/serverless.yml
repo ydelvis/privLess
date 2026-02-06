@@ -1,0 +1,297 @@
+service: big-mouth
+
+plugins:
+  - serverless-pseudo-parameters
+  - serverless-sam
+  - serverless-iam-roles-per-function
+  - serverless-plugin-tracing
+  - serverless-plugin-canary-deployments
+  - serverless-plugin-aws-alerts
+
+custom: 
+  stage: ${opt:stage, self:provider.stage}
+  region: ${opt:region}
+  logLevel:
+    prod: WARN
+    default: DEBUG
+  serverless-iam-roles-per-function:
+    defaultInherit: true
+  alerts:
+    stages:
+      - dev
+      - staging
+      - production
+    dashboards: false
+    alarms:
+      - functionThrottles
+      - functionErrors
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  tracing: true
+  environment:
+    log_level: ${self:custom.logLevel.${self:custom.stage}, self:custom.logLevel.default}
+    STAGE: ${self:custom.stage}
+    FUNCTION_SHIELD_TOKEN: ${ssm:/bigmouth/${self:custom.stage}/function_shield_token~true}
+  iamRoleStatements:
+    - Effect: Allow
+      Action: cloudwatch:PutMetricData
+      Resource: '*'
+    - Effect: Allow
+      Action:
+        - 'xray:PutTraceSegments'
+        - 'xray:PutTelemetryRecords'
+      Resource: '*'
+    - Effect: Allow
+      Action: codedeploy:*
+      Resource: '*'
+
+functions:
+  get-index:
+    handler: functions/get-index.handler
+    events:
+      - http:
+          path: /
+          method: get
+    environment:      
+      async_metrics: true
+    deploymentSettings:
+      type: Linear10PercentEvery1Minute
+      alias: Live
+      alarms:
+        - GetDashindexFunctionErrorsAlarm
+    #iamRoleStatementsInherit: true #optionally inherit shared permissions
+    iamRoleStatements:
+      - Effect: Allow
+        Action: execute-api:Invoke
+        Resource: arn:aws:execute-api:#{AWS::Region}:#{AWS::AccountId}:*/*/GET/restaurants
+      - Effect: Allow
+        Action: ssm:GetParameters*
+        Resource: arn:aws:ssm:#{AWS::Region}:#{AWS::AccountId}:parameter/bigmouth/${self:custom.stage}/*
+      - Effect: Allow
+        Action: secretsmanager:GetSecretValue
+        Resource: arn:aws:secretsmanager:#{AWS::Region}:#{AWS::AccountId}:secret:/bigmouth/${self:custom.stage}/*
+
+  get-restaurants:
+    handler: functions/get-restaurants.handler
+    events:
+      - http:
+          path: /restaurants/
+          method: get
+          authorizer: aws_iam
+    environment:
+      restaurants_table: restaurants
+      async_metrics: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:scan
+        Resource: arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/restaurants
+
+  search-restaurants:
+    handler: functions/search-restaurants.handler
+    events:
+      - http:
+          path: /restaurants/search
+          method: post
+          authorizer:
+            arn: arn:aws:cognito-idp:#{AWS::Region}:#{AWS::AccountId}:userpool/us-east-1_DfuAwa0vB
+    environment:
+      restaurants_table: restaurants
+      async_metrics: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:scan
+        Resource: arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/restaurants
+
+  place-order:
+    handler: functions/place-order.handler
+    events:
+      - http:
+          path: /orders
+          method: post
+          authorizer:
+            arn: arn:aws:cognito-idp:#{AWS::Region}:#{AWS::AccountId}:userpool/us-east-1_DfuAwa0vB
+    environment:
+      order_events_stream: order-events
+      async_metrics: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+
+  notify-restaurant:
+    handler: functions/notify-restaurant.handler
+    events:
+      - stream:
+          arn: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+    environment:
+      order_events_stream: order-events
+      restaurant_notification_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification
+      restaurant_notification_retry_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification-retry
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+      - Effect: Allow
+        Action: sns:Publish
+        Resource:
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification-retry
+      
+  retry-notify-restaurant:
+    handler: functions/retry-notify-restaurant.handler
+    events:
+      - sns: restaurant-notification-retry
+    environment:
+      order_events_stream: order-events
+      restaurant_notification_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification
+    onError: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification-dlq
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+      - Effect: Allow
+        Action: sns:Publish
+        Resource:
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:restaurant-notification
+    
+  accept-order:
+    handler: functions/accept-order.handler
+    events:
+      - http:
+          path: /orders/accept
+          method: post
+    environment:
+      order_events_stream: order-events
+      async_metrics: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+
+  notify-user:
+    handler: functions/notify-user.handler
+    events:
+      - stream:
+          arn: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+    environment:
+      order_events_stream: order-events
+      user_notification_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification
+      user_notification_retry_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification-retry
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+      - Effect: Allow
+        Action: sns:Publish
+        Resource:
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification-retry
+
+  retry-notify-user:
+    handler: functions/retry-notify-user.handler
+    events:
+      - sns: user-notification-retry
+    environment:
+      order_events_stream: order-events
+      user_notification_topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification
+    onError: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification-dlq
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+      - Effect: Allow
+        Action: sns:Publish
+        Resource:
+          - arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:user-notification
+
+  fulfill-order:
+    handler: functions/fulfill-order.handler
+    events:
+      - http:
+          path: /orders/complete
+          method: post
+    environment:
+      order_events_stream: order-events
+      async_metrics: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action: kinesis:PutRecord
+        Resource: arn:aws:kinesis:#{AWS::Region}:#{AWS::AccountId}:stream/order-events
+
+  auto-create-api-alarms:
+    handler: functions/create-alarms.handler  
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+              - aws.apigateway
+            detail-type:
+              - AWS API Call via CloudTrail
+            detail:
+              eventSource:
+                - apigateway.amazonaws.com
+              eventName:
+                - CreateDeployment
+    environment:
+      alarm_actions: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:NotifyMe
+      ok_actions: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:NotifyMe
+    iamRoleStatements:
+      - Effect: Allow
+        Action: apigateway:GET
+        Resource: 
+          - arn:aws:apigateway:#{AWS::Region}::/restapis/*
+          - arn:aws:apigateway:#{AWS::Region}::/restapis/*/stages/${self:custom.stage}
+      - Effect: Allow
+        Action: apigateway:PATCH
+        Resource: arn:aws:apigateway:#{AWS::Region}::/restapis/*/stages/${self:custom.stage}
+      - Effect: Allow
+        Action: cloudwatch:PutMetricAlarm
+        Resource: "*"
+
+resources:
+  Resources:
+    restaurantsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: restaurants
+        AttributeDefinitions:
+          - AttributeName: name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: name
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    orderEventsStream:
+      Type: AWS::Kinesis::Stream
+      Properties: 
+        Name: order-events
+        ShardCount: 1
+
+    restaurantNotificationTopic:
+      Type: AWS::SNS::Topic
+      Properties: 
+        DisplayName: restaurant-notification
+        TopicName: restaurant-notification
+
+    userNotificationTopic:
+      Type: AWS::SNS::Topic
+      Properties: 
+        DisplayName: user-notification
+        TopicName: user-notification
+
+    restaurantNotificationDLQTopic:
+      Type: AWS::SNS::Topic
+      Properties: 
+        DisplayName: restaurant-notification-dlq
+        TopicName: restaurant-notification-dlq
+
+    userNotificationDLQTopic:
+      Type: AWS::SNS::Topic
+      Properties: 
+        DisplayName: user-notification-dlq
+        TopicName: user-notification-dlq

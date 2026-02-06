@@ -1,0 +1,8 @@
+.serverless/
+node_modules/
+layer/lib
+layer/bin
+layer/etc
+layer/var
+coverage/
+.DS_Store

@@ -1,0 +1,74 @@
+service: todos
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+  region: us-east-1
+  stage: dev
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:us-east-1:*:*"
+
+functions:
+  create:
+    handler: handler.create
+    events:
+      - http:
+          method: POST
+          path: todos
+          cors: true
+  readAll:
+    handler: handler.readAll
+    events:
+      - http:
+          method: GET
+          path: todos
+          cors: true
+  readOne:
+    handler: handler.readOne
+    events:
+      - http:
+          method: GET
+          path: todos/{id}
+          cors: true
+  update:
+    handler: handler.update
+    events:
+      - http:
+          method: PUT
+          path: todos/{id}
+          cors: true
+  delete:
+    handler: handler.delete
+    events:
+      - http:
+          method: DELETE
+          path: todos/{id}
+          cors: true
+
+resources:
+  Resources:
+    TodosDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: 'todos'

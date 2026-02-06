@@ -1,0 +1,338 @@
+service: deploy-with-serverless
+
+plugins:
+  - serverless-stack-output
+
+custom:
+  queueName: serverless-projects-batch-queue
+  projectsTableName: serverless-projects
+  jobDefinitionName: serverless-batch-job-definition
+  keyPair: RafalWilinski-personal-ssh-key
+
+  output:
+    handler: scripts/deploy-proxy.handler
+    file: user-data.json
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: us-east-1
+  environment:
+    PROJECTS_TABLE: ${self:custom.projectsTableName}
+    JOB_QUEUE: ${self:custom.queueName}
+    JOB_DEFINITON_NAME: ${self:custom.jobDefinitionName}
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 'dynamodb:GetItem'
+        - 'dynamodb:PutItem'
+        - 'batch:SubmitJob'
+        - 'lambda:InvokeFunction'
+        - 's3:*'
+      Resource: '*'
+
+functions:
+  handler:
+    handler: functions/handler.run
+    memory: 128
+  image-proxy:
+    handler: functions/image-proxy.run
+    memory: 128
+    events:
+      - http:
+          path: /image
+          method: GET
+          cors: true
+  href:
+    handler: functions/href.run
+    memory: 128
+    events:
+      - http:
+          path: /template
+          method: GET
+          cors: true
+
+resources:
+  Resources:
+
+    # S3
+    DeployWithServerlessBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: deploy-with-serverless
+        AccessControl: PublicRead
+
+    # DynamoDB
+    ServerlessTemplatesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.projectsTableName}
+        AttributeDefinitions:
+          - AttributeName: url
+            AttributeType: S
+        KeySchema:
+          - AttributeName: url
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    # Networking
+    ServerlessBatchVPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: "10.0.0.0/16"
+        EnableDnsSupport: true
+        EnableDnsHostnames: true
+        Tags:
+          - Key: project
+            Value: "deploy-with-serverless"
+    ServerlessBatchInternetGateway:
+      Type: AWS::EC2::InternetGateway
+      Properties:
+        Tags:
+          - Key: project
+            Value: "deploy-with-serverless"
+    ServerlessBatchVPCIPGWAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        InternetGatewayId:
+          Ref: ServerlessBatchInternetGateway
+        VpcId:
+          Ref: ServerlessBatchVPC
+      DependsOn:
+        - ServerlessBatchInternetGateway
+        - ServerlessBatchVPC
+    ServerlessBatchRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId:
+          Ref: ServerlessBatchVPC
+        Tags:
+          - Key: project
+            Value: "deploy-with-serverless"
+    ServerlessBatchSubnetRouteTableAssoc:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId:
+          Ref: ServerlessBatchRouteTable
+        SubnetId:
+          Ref: ServerlessBatchSubnet
+    ServerlessBatchInternetRoute:
+      Type: AWS::EC2::Route
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        GatewayId:
+          Ref: ServerlessBatchInternetGateway
+        RouteTableId:
+          Ref: ServerlessBatchRouteTable
+      DependsOn: ServerlessBatchInternetGateway
+    ServerlessBatchSubnet:
+      Type: AWS::EC2::Subnet
+      Properties:
+        CidrBlock: "10.0.0.0/24"
+        MapPublicIpOnLaunch: true
+        VpcId:
+          Ref: ServerlessBatchVPC
+        Tags:
+          - Key: project
+            Value: "deploy-with-serverless"
+    ServerlessBatchSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupName: ServerlessBatchSecurityGroup
+        GroupDescription: Security Group for AWS Batch for Serverless-deploy-button project
+        VpcId:
+          Ref: ServerlessBatchVPC
+        SecurityGroupEgress:
+          -
+            IpProtocol: tcp
+            FromPort: "0"
+            ToPort: "60000"
+            CidrIp: "0.0.0.0/0"
+        SecurityGroupIngress:
+          -
+            IpProtocol: tcp
+            FromPort: "22"
+            ToPort: "22"
+            CidrIp: "0.0.0.0/0"
+        Tags:
+          - Key: project
+            Value: "deploy-with-serverless"
+
+    # ECR Repository
+    ServerlessBatchRepository:
+      Type: AWS::ECR::Repository
+      Properties:
+        RepositoryName: "serverless-batch"
+        RepositoryPolicyText: 
+          Version: "2012-10-17"
+          Statement: 
+            - 
+              Sid: AllowPushPull
+              Effect: Allow
+              Principal: 
+                AWS: 
+                  - 'Fn::GetAtt':
+                    - ServerlessBatchUser
+                    - Arn
+              Action: 
+                - "ecr:GetDownloadUrlForLayer"
+                - "ecr:BatchGetImage"
+                - "ecr:BatchCheckLayerAvailability"
+                - "ecr:PutImage"
+                - "ecr:InitiateLayerUpload"
+                - "ecr:UploadLayerPart"
+                - "ecr:CompleteLayerUpload"
+      DependsOn: ServerlessBatchUser
+    
+    # IAM
+    ServerlessBatchUser:
+      Type: AWS::IAM::User
+      Properties:
+        LoginProfile:
+          Password: ${file(./password.yml):password}
+        UserName: ServerlessBatchUser
+    ServerlessBatchUserPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: ServerlessBatchUserPolicy
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Effect: "Allow"
+              Action:
+                - ecr:GetAuthorizationToken
+                - ecr:InitiateLayerUpload
+              Resource: "*"
+        Users:
+          - Ref: ServerlessBatchUser
+      DependsOn: ServerlessBatchUser
+    ServerlessBatchUserKeys:
+      Type: AWS::IAM::AccessKey
+      Properties:
+        UserName: ServerlessBatchUser
+      DependsOn: ServerlessBatchUser
+    ServerlessBatchServiceRole: # Standard AWS Batch Role
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ServerlessBatchServiceRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - batch.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: ServerlessBatchPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Resource: '*'
+                  Action:
+                    - ec2:DescribeAccountAttributes
+                    - ec2:DescribeInstances
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeKeyPairs
+                    - ec2:DescribeImages
+                    - ec2:DescribeImageAttribute
+                    - ec2:DescribeSpotFleetInstances
+                    - ec2:DescribeSpotFleetRequests
+                    - ec2:DescribeSpotPriceHistory
+                    - ec2:RequestSpotFleet
+                    - ec2:CancelSpotFleetRequests
+                    - ec2:ModifySpotFleetRequest
+                    - ec2:TerminateInstances
+                    - autoscaling:DescribeAccountLimits
+                    - autoscaling:DescribeAutoScalingGroups
+                    - autoscaling:DescribeLaunchConfigurations
+                    - autoscaling:DescribeAutoScalingInstances
+                    - autoscaling:CreateLaunchConfiguration
+                    - autoscaling:CreateAutoScalingGroup
+                    - autoscaling:UpdateAutoScalingGroup
+                    - autoscaling:SetDesiredCapacity
+                    - autoscaling:DeleteLaunchConfiguration
+                    - autoscaling:DeleteAutoScalingGroup
+                    - autoscaling:CreateOrUpdateTags
+                    - autoscaling:SuspendProcesses
+                    - autoscaling:PutNotificationConfiguration
+                    - autoscaling:TerminateInstanceInAutoScalingGroup
+                    - ecs:*
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - logs:DescribeLogGroups
+                    - iam:GetInstanceProfile
+                    - iam:PassRole
+                    - ecr:*
+                    - dynamodb:PutItem
+                    - dynamodb:DescribeTable
+
+    # AWS Batch
+    ServerlessBatchComputeEnvironment:
+      Type: AWS::Batch::ComputeEnvironment
+      Properties:
+        Type: MANAGED
+        ComputeEnvironmentName: ServerlessBatchComputeEnvironment
+        ServiceRole:
+          Fn::GetAtt:
+            - ServerlessBatchServiceRole
+            - Arn
+        State: ENABLED
+        ComputeResources:
+          MinvCpus: 0
+          MaxvCpus: 4
+          DesiredvCpus: 0
+          Ec2KeyPair: ${self:custom.keyPair}
+          Type: "EC2"
+          ImageId: ami-ec33cc96 # ECS Optimized AMI
+          InstanceRole: ecsInstanceRole
+          InstanceTypes:
+            - m3.medium
+          SecurityGroupIds:
+            - Ref: ServerlessBatchSecurityGroup
+          Subnets:
+            - Ref: ServerlessBatchSubnet
+    ServerlessBatchJobQueue:
+      Type: "AWS::Batch::JobQueue"
+      Properties:
+        ComputeEnvironmentOrder:
+          - ComputeEnvironment: ServerlessBatchComputeEnvironment
+            Order: 1
+        Priority: 1
+        State: ENABLED
+        JobQueueName: ${self:custom.queueName}
+      DependsOn: ServerlessBatchComputeEnvironment
+    ServerlessBatchJobDefinition:
+      Type: 'AWS::Batch::JobDefinition'
+      Properties:
+        Type: container
+        JobDefinitionName: ${self:custom.jobDefinitionName}
+        ContainerProperties:
+          Memory: 1024
+          Privileged: true
+          Vcpus: 1
+          Image: 
+            Fn::Join:
+              - ""
+              - - Ref: AWS::AccountId
+                - '.dkr.ecr.us-east-1.amazonaws.com/serverless-batch:latest'
+        RetryStrategy:
+          Attempts: 1
+  Outputs:
+    accessKey:
+      Description: Access Key
+      Value:
+        Ref: ServerlessBatchUserKeys
+    secretKey:
+      Description: Secret Key
+      Value:
+        Fn::GetAtt:
+          - ServerlessBatchUserKeys
+          - SecretAccessKey
+      

@@ -1,0 +1,126 @@
+service: serverless-data-pipeline-example
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: dev
+  environment:
+    SUMS_TABLE: ${self:service}-summs-${self:provider.stage}
+    SCRATCHPAD_TABLE: ${self:service}-scratchpad-${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.SUMS_TABLE}"
+
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.SCRATCHPAD_TABLE}"
+
+    # all permissions on all SQS queues, what could possibly go wrong
+    - Effect: "Allow"
+      Action:
+        - "sqs:*"
+      Resource: "*"
+
+functions:
+  sumArray:
+    handler: dist/sumArray.handler
+    events:
+      - http:
+          path: sumArray
+          method: POST
+          cors: true
+    environment:
+      timesTwoQueueURL:
+        Ref: TimesTwoQueue
+
+  timesTwo:
+    handler: dist/timesTwo.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - TimesTwoQueue
+              - Arn
+          batchSize: 1
+    environment:
+      reduceQueueURL:
+        Ref: ReduceQueue
+
+  reduce:
+    handler: dist/reduce.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - ReduceQueue
+              - Arn
+          # this means we get up to 2 messages per invocation
+          batchSize: 2
+    environment:
+      reduceQueueURL:
+        Ref: ReduceQueue
+
+resources:
+  Resources:
+    SumsTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: arrayId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: arrayId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.SUMS_TABLE}
+
+    ScratchpadTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: packetId
+            AttributeType: S
+          - AttributeName: arrayId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: packetId
+            KeyType: HASH
+          - AttributeName: arrayId
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.SCRATCHPAD_TABLE}
+
+    TimesTwoQueue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: "TimesTwoQueue-${self:provider.stage}"
+        VisibilityTimeout: 60
+
+    ReduceQueue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: "ReduceQueue-${self:provider.stage}"
+        VisibilityTimeout: 60
+        # RedrivePolicy:
+        #   deadLetterTargetArn:
+        #     Fn::GetAtt:
+        #       - UnpackLogDLQueue
+        #       - Arn
+        #   maxReceiveCount: 10

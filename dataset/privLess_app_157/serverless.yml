@@ -1,0 +1,56 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: ses-forwarder # NOTE: update this with your service name
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  environment: ${file(env.yml):${self:custom.stage}, file(env.yml):default}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+      Resource:
+        - Fn::Join:
+          - ''
+          -
+            - Fn::GetAtt: [EmailsBucket, Arn]
+            - '/*'
+    - Effect: Allow
+      Action: ses:SendRawEmail
+      Resource:
+        - "*"
+
+functions:
+  sesForwarder:
+    handler: handler.sesForwarder
+    memorySize: 128 # default is 1024
+    timeout: 10 # default is 6
+    environment:
+      stage: ${self:custom.stage}
+      bucketName: !Ref EmailsBucket
+
+resources:
+  # Lambda
+  - ${file(resources/lambda-permissions.yml)}
+  # S3
+  - ${file(resources/s3-bucket.yml)}
+  # SES
+  - ${file(resources/ses-rule.yml)}

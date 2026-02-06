@@ -1,0 +1,60 @@
+service: launchdarkly-dynamo-store
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: ${opt:stage, 'staging'}
+  region: ${env:AWS_REGION}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:BatchWriteItem
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:Query
+        - dynamodb:Scan
+      Resource:
+        - Fn::GetAtt:
+            - DynamoDBTable
+            - Arn
+  environment:
+    LAUNCHDARKLY_DYNAMODB_TABLE: launchdarkly-${self:provider.stage}
+    LAUNCHDARKLY_SDK_KEY: ${ssm:/launchdarkly/${self:provider.stage}/sdkkey~true}
+    # FIXME: This MUST be set in SSM even if unused
+    LAUNCHDARKLY_WEBHOOK_SECRET: ${ssm:/launchdarkly/${self:provider.stage}/webhooksecret~true}
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./bin/**
+
+functions:
+  store:
+    handler: bin/store
+    events:
+      - http:
+          path: /
+          method: post
+      - schedule:
+          rate: "cron(0 0/1 * * ? *)"
+
+resources:
+  Resources:
+    DynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: launchdarkly-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: namespace
+            AttributeType: S
+          - AttributeName: key
+            AttributeType: S
+        KeySchema:
+          - AttributeName: namespace
+            KeyType: HASH
+          - AttributeName: key
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

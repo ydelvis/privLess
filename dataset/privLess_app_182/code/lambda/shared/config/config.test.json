@@ -1,0 +1,10 @@
+{
+  "dynamodb": {
+    "region": "eu-west-1",
+    "clientJS": "../../../spec/helpers/dynamodb-client.js"
+  },
+  "shortener": {
+    "resourceTableName": "sls-url-shortener-urls-dev",
+    "resourceIndexName": "sls-url-shortener-trackers-dev"
+  }
+}

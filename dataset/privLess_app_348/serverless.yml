@@ -1,0 +1,61 @@
+service: slshustl
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:*"
+      Resource: "arn:aws:dynamodb:*:*:table/slshustl"
+
+functions:
+  hello:
+    handler: handler.hello
+    description: hello world funciton to see if things are working
+    events:
+      - http:
+          path: hello
+          method: get
+          cors: true
+  seed:
+    handler: handler.seed
+    description: seed dynanomodb table with baseball games
+    events:
+      - http:
+          path: seed
+          method: post
+  games:
+    handler: handler.games
+    description: fetch all home games for baseball
+    events:
+      - http:
+          path: games
+          method: get
+          cors: true
+  today:
+    handler: handler.today
+    description: return just baseball games today
+    events:
+      - http:
+          path: today
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    DynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: slshustl

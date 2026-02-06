@@ -1,0 +1,15 @@
+{
+  "name": "serverless-aws-lambda-ses-forwarder",
+  "version": "1.0.0",
+  "description": "Serverless wrapper around https://github.com/arithmetric/aws-lambda-ses-forwarder",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Anthony Howell anthonyrhowell@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "aws-lambda-ses-forwarder":"4.1.0",
+    "js-yaml":"3.8.2"
+  }
+}

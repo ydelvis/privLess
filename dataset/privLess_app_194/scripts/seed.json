@@ -1,0 +1,38 @@
+[
+  {
+    "id": "likud",
+    "logo": "https://www.idi.org.il/media/5955/likud.jpg?mode=crop&width=259&height=169",
+    "name": "Likud",
+    "url": "https://www.likud.org.il/"
+  },
+  {
+    "id": "kachollavan",
+    "logo": "https://kachollavan.org.il/wp-content/uploads/2019/02/gantz-lapid-1.png",
+    "name": "Kachol Lavan",
+    "url": "https://kachollavan.org.il/"
+  },
+  {
+    "id": "yeshatid",
+    "logo": "https://www.jewishvirtuallibrary.org/jsource/images/Politics/yeshatidlogo.jpg",
+    "name": "Yesh Atid",
+    "url": "https://www.yeshatid.org.il/"
+  },
+  {
+    "id": "havoda",
+    "logo": "https://www.havoda.org.il/wp-content/uploads/2019/01/haavoda-new-logo.png",
+    "name": "Havoda",
+    "url": "https://www.havoda.org.il/"
+  },
+  {
+    "id": "meretz",
+    "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/6/67/Meretz_Logo.svg/200px-Meretz_Logo.svg.png",
+    "name": "Meretz",
+    "url": "https://elections.meretz.org.il/"
+  },
+  {
+    "id": "baityehudi",
+    "logo": "https://baityehudi.org.il/wp-content/themes/baityehudi.org.il/images/new_logo.png",
+    "name": "Bait Yehudi",
+    "url": "http://baityehudi.org.il/"
+  }
+]

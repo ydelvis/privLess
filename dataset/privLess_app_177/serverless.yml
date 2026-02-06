@@ -1,0 +1,90 @@
+service: coaching-chatbot
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: us-east-1
+  cfLogs: true
+  environment:
+    STAGE: ${opt:stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+      - dynamodb:Scan
+      - dynamodb:Query
+      - dynamodb:GetItem
+      - dynamodb:PutItem
+      - dynamodb:DeleteItem
+      Resource: arn:aws:dynamodb:${opt:region, self:provider.region}:*:*
+functions:
+  facebookMessenger:
+    handler: src/facebook-messenger/handler.handler
+    memorySize: 128
+    timeout: 15
+    events:
+      - http:
+          path: facebook-bot
+          method: get
+          integration: lambda
+          response:
+            headers:
+              Content-Type: "'text/html'"
+            template: $input.path('$.response')
+      - http:
+          path: facebook-bot
+          method: post
+          integration: lambda
+  facebookReminder:
+    handler: src/facebook-messenger/handler.meetingCheck
+    memorySize: 128
+    timeout: 15
+    events:
+      - schedule: rate(1 hour)
+
+resources:
+  Resources:
+    SessionsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:service}-sessions-${opt:stage, self:provider.stage}
+    PairsTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:service}-pairs-${opt:stage, self:provider.stage}
+    FeedbackTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Delete
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:service}-feedback-${opt:stage, self:provider.stage}
+
+plugins:
+  - serverless-webpack

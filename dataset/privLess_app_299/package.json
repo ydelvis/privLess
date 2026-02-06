@@ -1,0 +1,20 @@
+{
+  "name": "serverless-authentication-module",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "bluebird": "^3.5.1",
+    "decamelize": "^2.0.0",
+    "faunadb": "^2.5.0",
+    "log4js": "^3.0.5",
+    "serverless-authentication": "^0.6.3",
+    "serverless-authentication-facebook": "^0.6.0",
+    "serverless-authentication-google": "^0.6.0",
+    "serverless-authentication-microsoft": "^0.6.0"
+  },
+  "devDependencies": {
+    "chalk": "^2.4.1",
+    "js-yaml": "^3.12.0",
+    "lodash": "^4.17.10"
+  }
+}

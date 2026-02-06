@@ -1,0 +1,6 @@
+README.md
+screenshots
+*.yml
+.gitignore
+bin
+.serverless

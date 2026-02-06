@@ -1,0 +1,23 @@
+{
+  "name": "lambda-mailer",
+  "version": "0.2.0",
+  "description": "Simple module for receiving an email from a contact form on your website.",
+  "main": "lambdaMailer.js",
+  "scripts": {
+    "start": "sls offline start"
+  },
+  "keywords": [
+    "aws",
+    "aws-lambda",
+    "aws-ses",
+    "nodejs",
+    "no-dependencies",
+    "node-module"
+  ],
+  "author": "Adnan Rahić <ado.raha198@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adnanrahic/lambda-mailer"
+  }
+}

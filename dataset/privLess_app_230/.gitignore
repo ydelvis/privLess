@@ -1,0 +1,6 @@
+# package directories
+
+jspm_packages
+
+# Serverless directories
+.serverless

@@ -1,0 +1,16 @@
+[[constraint]]
+  name = "github.com/aws/aws-lambda-go"
+  version = "v1.*"
+
+[[constraint]]
+  name = "github.com/aws/aws-sdk-go"
+  version = "v1.*"
+
+[[constraint]]
+  name = "gopkg.in/launchdarkly/go-client.v4"
+  branch = "v4"
+
+[prune]
+  go-tests = true
+  unused-packages = true
+  non-go = true

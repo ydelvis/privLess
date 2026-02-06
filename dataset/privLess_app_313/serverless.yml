@@ -1,0 +1,82 @@
+service: ${file(./serverless-vpc-variables.yml):serviceName}
+
+
+plugins:
+  - serverless-domain-manager
+  - serverless-apigw-binary
+  - serverless-apigwy-binary
+
+
+custom:
+  region: ${file(./serverless-vpc-variables.yml):region}
+  accountId: ${file(./serverless-vpc-variables.yml):accountId}
+  domain:
+    staging: staging-${self:service}.${file(./serverless-vpc-variables.yml):baseDomain}
+    production: production-${self:service}.${file(./serverless-vpc-variables.yml):baseDomain}
+  subnetId:
+    staging: ${file(./serverless-vpc-variables.yml):subnetId.staging}
+    production: ${file(./serverless-vpc-variables.yml):subnetId.production}
+  securityGroup:
+    staging: ${file(./serverless-vpc-variables.yml):securityGroup.staging}
+    production: ${file(./serverless-vpc-variables.yml):securityGroup.production}
+  customDomain:
+    basePath: ''
+    domainName: ${self:custom.domain.${opt:stage}}
+    certificateName: '*.${file(./serverless-vpc-variables.yml):baseDomain}'
+    stage: ${opt:stage}
+    createRoute53Record: true
+  apigwBinary:
+    types:
+      - '*/*'
+
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  region: ${file(./serverless-vpc-variables.yml):region}
+  memorySize: 128
+  environment:
+    DB_PREFIX: "${opt:stage}_${self:service}_"
+    SERVICE_AWS_REGION: "${file(./serverless-vpc-variables.yml):region}"
+    NODE_ENV: 'production'
+    STATIC_PATH: ''
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:BatchGetItem"
+        - "dynamodb:BatchWriteItem"
+        - "dynamodb:DeleteItem"
+        - "dynamodb:DescribeTimeToLive"
+        - "dynamodb:GetItem"
+        - "dynamodb:GetRecords"
+        - "dynamodb:GetShardIterator"
+        - "dynamodb:PutItem"
+        - "dynamodb:Query"
+        - "dynamodb:Scan"
+        - "dynamodb:UpdateItem"
+        - "dynamodb:UpdateTable"
+      Resource: "arn:aws:dynamodb:${self:custom.region}:${self:custom.accountId}:table/${opt:stage}_${self:service}_*"
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:CreateTable"
+        - "dynamodb:DescribeTable"
+        - "dynamodb:ListTables"
+      Resource: "*"
+
+
+
+functions:
+  app:
+    handler: lambda.handler
+    vpc:
+      securityGroupIds: ${self:custom.securityGroup.${opt:stage}}
+      subnetIds: ${self:custom.subnetId.${opt:stage}}
+    events:
+      - http:
+          method: ANY
+          path: /
+          contentHandling: CONVERT_TO_BINARY
+      - http:
+          method: ANY
+          path: '{proxy+}'
+          contentHandling: CONVERT_TO_BINARY

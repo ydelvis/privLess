@@ -1,0 +1,238 @@
+frameworkVersion: "^3.38.0"
+
+service: ${self:custom.appPrefix}
+
+provider:
+  name: aws
+  region: ${opt:region}
+  stage: ${opt:stage}
+  runtime: nodejs20.x
+  architecture: arm64
+  memorySize: 256
+  stackTags:
+    voxnest:billing:app: ${self:custom.appPrefix}
+  environment:
+    STAGE: ${opt:stage}
+    PGUSER: lambda
+    PGDATABASE: poduptime
+    PGHOST:
+      Fn::GetAtt:
+        - MainDatabaseCluster
+        - Endpoint.Address
+    PGPORT:
+      Fn::GetAtt:
+        - MainDatabaseCluster
+        - Endpoint.Port
+  vpc:
+    securityGroupIds:
+      - !Ref LambdaSecurityGroup
+    subnetIds: ${self:custom.lambdaSubnetIds}
+  layers:
+    - ${self:custom.observabilityLayerArn}
+  iam:
+    role:
+      statements:
+        - Effect: Deny
+          Action:
+            - "logs:*"
+          Resource:
+            - "*"
+        - Effect: Allow
+          Action:
+            - "s3:Get*"
+            - "s3:Put*"
+            - "s3:Abort*"
+          Resource:
+            - Fn::Join:
+              - ""
+              - - "arn:aws:s3:::"
+                - Ref: DataBucket
+                - "/*"
+        - Effect: Allow
+          Action:
+            - "s3:Put*"
+            - "s3:Abort*"
+          Resource: "arn:aws:s3:::vn-lab-ppm-website-${opt:stage}-us-east-1-website/api/*"
+        - Effect: Allow
+          Action:
+            - "sqs:SendMessage"
+          Resource:
+            Fn::GetAtt:
+              - AggregateQueue
+              - Arn
+        - Effect: Allow
+          Action:
+            - "sqs:SendMessage"
+          Resource:
+            - "${self:custom.observabilityQueueArn}"
+        - Effect: Allow
+          Action:
+            - "rds-db:connect"
+          Resource:
+            - Fn::Join:
+              - ""
+              - - "arn:aws:rds-db:${opt:region}:"
+                - !Ref AWS::AccountId
+                - ":dbuser:"
+                - Fn::GetAtt:
+                  - MainDatabaseCluster
+                  - DBClusterResourceId
+                - "/lambda"
+
+custom:
+  appPrefix: vn-lab-ppm-analytics
+  websiteBucket: vn-lab-ppm-website-${opt:stage}-us-east-1-website
+  vpcId: ${param:vpcId}
+  lambdaSubnetIds: !Split [",", "${param:lambdaSubnetIds}"]
+  databaseSubnetIds: !Split [",", "${param:databaseSubnetIds}"]
+  administrativeSecurityGroupId: ${param:administrativeSecurityGroupId}
+  observabilityLayerArn: ${param:observabilityLayerArn}
+  observabilityQueueArn: ${param:observabilityQueueArn}
+  prune:
+    automatic: true
+    number: 5
+
+package:
+  patterns:
+    - "!.*"
+    - "!serverless*.yml"
+    - "!deployment"
+
+plugins:
+  - serverless-prune-plugin
+
+resources:
+  - ${file(deployment/resources/athena.yml)}
+  - ${file(deployment/resources/database.yml)}
+  - ${file(deployment/resources/events.yml)}
+  - ${file(deployment/resources/network.yml)}
+  - ${file(deployment/resources/s3.yml)}
+  - ${file(deployment/resources/sqs.yml)}
+
+functions:
+  #
+  # Function: archiveRaw
+  # Purpose: archive a raw copy of the incoming measurement event
+  #   on S3 for troubleshooting purposes and re-ingestion
+  # Failure mode:  This function is invoked by the Lambda/SQS poller
+  #   so its retry policy is managed by the SQS queue configuration. In this
+  #   specific case, it's setup to allow for 5 deliveries and then move the
+  #   message to a DLQ that hold the messages for a week to allow for a redrive
+  #
+  archiveRaw:
+    name: ${self:custom.appPrefix}-archiveRaw
+    handler: functions/archive-raw/handler.archiveRaw
+    environment:
+      DATA_BUCKET: !Ref DataBucket
+      WEBSITE_BUCKET: ${self:custom.websiteBucket}
+    events:
+      - sqs:
+          batchSize: 1
+          arn:
+            Fn::GetAtt:
+              - ArchiveRawQueue
+              - Arn
+  #
+  # Function: archiveDatabase
+  # Purpose: archive a the measurement event in Aurora to be used by
+  #   the aggregation tasks
+  # Failure mode:  This function is invoked by the Lambda/SQS poller
+  #   so its retry policy is managed by the SQS queue configuration. In this
+  #   specific case, it's setup to allow for 5 deliveries and then move the
+  #   message to a DLQ that hold the messages for a week to allow for a redrive
+  #
+  archiveDatabase:
+    name: ${self:custom.appPrefix}-archiveDatabase
+    handler: functions/archive-database/handler.archiveDatabase
+    reservedConcurrency: 20
+    events:
+      - sqs:
+          batchSize: 1
+          arn:
+            Fn::GetAtt:
+              - ArchiveDatabaseQueue
+              - Arn
+  #
+  # Function: aggregateMinutely
+  # Purpose: kickstart aggregation jobs that are supposed to run
+  #   on a minutely schedule
+  # Failure mode: This function is invoked async from EventBridge so its retry
+  #   policy is managed with maximumRetryAttempts/onFailure. In this
+  #   specific case being this function re-triggered every minute from
+  #   a scheduled event, we're NOT going to perform any retry in case
+  #   this function fail and we don't need the initial event to be
+  #   delivered to a DLQ
+  #
+  aggregateMinutely:
+    name: ${self:custom.appPrefix}-aggregateMinutely
+    handler: functions/aggregate-minutely/handler.aggregateMinutely
+    timeout: 55
+    environment:
+      AGGREGATE_QUEUE_URL:
+        Fn::GetAtt:
+          - AggregateQueue
+          - QueueUrl
+    events:
+      - schedule: rate(1 minute)
+    maximumRetryAttempts: 0
+  #
+  # Function: aggregateDaily
+  # Purpose: kickstart aggregation jobs that are supposed to run
+  #   on a daily schedule
+  # Failure mode: This function is invoked async from EventBridge so its retry
+  #   policy is managed with maximumRetryAttempts/onFailure. In this
+  #   specific case to avoid waiting until the next day to have it triggered
+  #   again we allow for a few retries but we don't need the initial event to be
+  #   delivered to a DLQ
+  #
+  aggregateDaily:
+    name: ${self:custom.appPrefix}-aggregateDaily
+    handler: functions/aggregate-daily/handler.aggregateDaily
+    timeout: 55
+    environment:
+      AGGREGATE_QUEUE_URL:
+        Fn::GetAtt:
+          - AggregateQueue
+          - QueueUrl
+    events:
+      - schedule: cron(5 0 * * ? *)
+    maximumRetryAttempts: 2
+  #
+  # Function: aggregateWorker
+  # Purpose: perform a single aggregation job and save the results
+  #   on S3
+  # Failure mode:  This function is invoked by the Lambda/SQS poller
+  #   so its retry policy is managed by the SQS queue configuration. In this
+  #   specific case, it's setup to allow for single delivery and then move the
+  #   message to a blackhole DLQ that evicts them fast and we'd never redrive.
+  #
+  aggregateWorker:
+    name: ${self:custom.appPrefix}-aggregateWorker
+    handler: functions/aggregate-worker/handler.aggregateWorker
+    timeout: 55
+    reservedConcurrency: 30
+    environment:
+      WEBSITE_BUCKET: ${self:custom.websiteBucket}
+    events:
+      - sqs:
+          batchSize: 1
+          arn:
+            Fn::GetAtt:
+              - AggregateQueue
+              - Arn
+  #
+  # Function: cleanupDatabase
+  # Purpose: implement database retention period by deleting rows falling
+  #   out of the retention window.
+  # Failure mode: This function is invoked async from EventBridge so its retry
+  #   policy is managed with maximumRetryAttempts/onFailure. In this
+  #   specific case to avoid waiting until the next day to have it triggered
+  #   again we allow for a few retries but we don't need the initial event to be
+  #   delivered to a DLQ
+  #
+  cleanupDatabase:
+    name: ${self:custom.appPrefix}-cleanupDatabase
+    handler: functions/cleanup-database/handler.cleanupDatabase
+    events:
+      - schedule: rate(1 day)
+    maximumRetryAttempts: 2

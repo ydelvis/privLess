@@ -1,0 +1,145 @@
+service:
+  name: serverless-polly
+
+plugins:
+  - serverless-webpack
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+  region: eu-west-1
+  memorySize: 128
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+        - "s3:PutObjectAcl"
+      Resource:
+        Fn::Join:
+          - ""
+          -
+            - "arn:aws:s3:::"
+            - Ref : AudioBucket
+            - "/*"
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:DeleteItem"
+        - "dynamodb:GetItem"
+        - "dynamodb:PutItem"
+        - "dynamodb:Scan"
+        - "dynamodb:UpdateItem"
+        - "dynamodb:GetRecords"
+        - "dynamodb:GetShardIterator"
+        - "dynamodb:DescribeStream"
+        - "dynamodb:ListStreams"
+      Resource:
+        - 'Fn::Join':
+          - ':'
+          -
+            - 'arn:aws:dynamodb'
+            - Ref: 'AWS::Region'
+            - Ref: 'AWS::AccountId'
+            - 'Fn::Join':
+              - ""
+              - 
+                - 'table/'
+                - Ref: PollyTable
+    - Effect: "Allow"
+      Action:
+        - "polly:*"
+      Resource: "*"
+
+functions:
+  getpost:
+    handler: getpost.main
+    description: Gets posts from dynamodb
+    events:
+      - http:
+          method: get
+          path: /
+          integration: lambda
+          cors: true
+          request:
+            passThrough: WHEN_NO_MATCH
+            parameters:
+              querystrings:
+                postId: true
+            template:
+              application/json: '{ "postId" : "$input.params(''postId'')" }'
+          response:
+            headers:
+              Content-Type: "'application/json'"
+    environment:
+      tableName:
+        Ref: PollyTable
+  newpost:
+    handler: newpost.main
+    description: Adds new posts to dynamodb
+    events:
+      - http:
+          method: post
+          path: /
+          integration: lambda
+          cors: true
+          request:
+            passThrough: WHEN_NO_MATCH
+            template:
+              application/json: ''
+          response:
+            headers:
+              Content-Type: "'application/json'"
+    environment:
+      tableName:
+        Ref: PollyTable
+  convertaudio:
+    handler: convertaudio.main
+    description: Converts text to mp3 voices throught Polly
+    events:
+      - stream:
+          type: dynamodb
+          batchSize: 1
+          arn:
+            Fn::GetAtt:
+              - PollyTable
+              - StreamArn
+    environment:
+      tableName:
+        Ref: PollyTable
+      audioBucket:
+        Ref: AudioBucket
+      region: ${self:provider.region}
+
+resources:
+  Resources:
+    PollyTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    StaticBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+    AudioBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+
+custom:
+  webpack:
+    includeModules:
+      forceExclude:
+        - aws-sdk

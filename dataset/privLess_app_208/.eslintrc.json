@@ -1,0 +1,13 @@
+{
+  "extends": "airbnb-base",
+  "env": {
+    "node": true
+  },
+  "rules": {
+    "no-console": ["off"],
+    "import/prefer-default-export": ["off"],
+    "no-use-before-define": ["off"],
+    "prefer-template": ["off"],
+    "no-loop-func": ["off"]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "serverless-media-worker",
+  "version": "0.0.1",
+  "description": "A simple out of the box serverless media worker for your daily media processing tasks",
+  "main": "index.js",
+  "keywords": [
+    "serverless-image-compressor",
+    "serverless-video-transcoder",
+    "serverless-image-worker"
+  ],
+  "private": false,
+  "scripts": {
+    "build:local": "rm -rf node_modules/sharp && npm install sharp",
+    "build:serverless": "rm -rf node_modules/sharp && npm install --arch=x64 --platform=linux sharp",
+    "predeploy:dev": "npm run build:serverless",
+    "deploy:dev": "sls deploy",
+    "predeploy:prod": "npm run build:serverless",
+    "deploy:prod": "sls deploy --env production",
+    "preinvoke": "npm run build:local",
+    "invoke": "sls invoke local --function media-worker"
+  },
+  "author": "Vinayak Sarawagi <vinayaksarawagi25@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "aws-sdk": "^2.726.0",
+    "axios": "^0.19.2",
+    "lodash": "^4.17.19",
+    "serverless-dotenv-plugin": "^2.4.2",
+    "sharp": "^0.25.4"
+  }
+}

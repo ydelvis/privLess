@@ -1,0 +1,478 @@
+service: yearn
+frameworkVersion: '2'
+
+plugins:
+  - serverless-dynamodb-local
+  - serverless-offline
+  - serverless-domain-manager
+  - serverless-export-swagger
+  - serverless-aws-documentation
+  - serverless-deployment-bucket
+
+custom:
+  customDomain: ${file(config/serverless/domain.js):${self:provider.stage, 'dev'}}
+  serverless-offline:
+    useChildProcesses: true
+  basePath: ''
+  swaggerDestinations:
+    s3BucketName: 'yearn.tools'
+    s3KeyName: 'swagger/swagger.json'
+    acl: public-read
+  documentation:
+    api:
+      info:
+        version: '1.02'
+        title: Yearn API
+        description: Yearn API
+      tags:
+        - name: Vaults
+          description: Vault endpoints
+        - name: User
+          description: User endpoints (these APIs are specific to a user account)
+        - name: Loanscan
+          description: Loanscan endpoints (not for general consumption)
+        - name: Yearn
+          description: Yearn organization endpoints
+
+  # stage-specific configuration
+  dev:
+    jobs-schedule:
+      enabled: false
+  prod:
+    jobs-schedule:
+      enabled: true
+
+  dynamodb:
+    stages:
+      - local
+    start:
+      port: 8000
+      inMemory: true
+      migrate: true
+
+resources:
+  - ${file(resources/resource.${opt:stage, self:provider.stage}.yml), ''}
+  - ${file(resources/api-gateway-errors.yml)}
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: us-east-1
+  profile: ${file(awsProfile.yml):aws_profile}
+  stage: ${opt:stage, 'dev'}
+
+  deploymentBucket:
+    name: ${self:provider.stage, 'dev'}-deployment-yearn.finance
+    serverSideEncryption: AES256
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:BatchGetItem
+        - dynamodb:BatchWriteItem
+      Resource: 'arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/*'
+
+functions:
+  # /vaults
+  vaults:
+    handler: services/vaults/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults
+          method: get
+          cors: true
+          request:
+            parameters:
+              querystrings:
+                apy: false
+          documentation:
+            summary: Gets all vaults from the vault registry
+            tags:
+              - Vaults
+            description: Vaults are pulled from the vault registry (https://etherscan.io/address/0x3ee41c098f9666ed2ea246f4d2558010e59d63a0). Includes controller/strategy info. Updates once an hour.
+            queryParams:
+              - name: 'apy'
+                description: 'Include vault APY'
+                type: 'boolean'
+                required: false
+
+  vaults-all:
+    handler: services/vaults/all/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/all
+          method: get
+          cors: true
+          documentation:
+            summary: Gets all vaults (all versions) from the vault registry
+            tags:
+              - Vaults
+            description: >
+              V1 vaults are pulled from the vault registry (https://etherscan.io/address/0x3ee41c098f9666ed2ea246f4d2558010e59d63a0).
+              V2 vaults are pulled from thegraph (https://api.thegraph.com/subgraphs/name/salazarguille/yearn-vaults-v2-subgraph-rinkeby).
+
+  vaults-all-job:
+    handler: services/vaults/all/job.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(10 minutes)
+          enabled: ${self:custom.${self:provider.stage}.jobs-schedule.enabled}
+
+  vaults-snapshots:
+    handler: services/vaults/snapshots/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/snapshots
+          method: get
+          cors: true
+          documentation:
+            summary: Gets current snapshots of all vaults from the Yearn subgraph
+            tags:
+              - Vaults
+            description: >
+              Currently the subgraph is indexing 8 out of 11 vaults. More vaults to be added later.
+
+  vaults-v2:
+    handler: services/vaults/v2/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/v2
+          method: get
+          cors: true
+          documentation:
+            summary: Gets current v2 vaults from the Yearn subgraph v2
+            tags:
+              - Vaults
+
+  vaults-addresses:
+    handler: services/vaults/addresses/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/addresses
+          method: get
+          cors: true
+          documentation:
+            summary: Gets all vault addresses from the vault registry
+            tags:
+              - Vaults
+            description: >
+              Vault addresses are pulled from the vault registry (https://etherscan.io/address/0x3ee41c098f9666ed2ea246f4d2558010e59d63a0). Updates once an hour.
+
+  vaults-save:
+    handler: services/vaults/save/handler.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(1 hour)
+          enabled: ${self:custom.${self:provider.stage}.jobs-schedule.enabled}
+
+  vaults-apy:
+    handler: services/vaults/apy/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/apy
+          method: get
+          cors: true
+          documentation:
+            summary: Gets APY for all vaults
+            tags:
+              - Vaults
+            description: >
+              Calcualted from: yearlyRoi = 100 * ((1 + returnSincePrevBlock) ** (365 / days) - 1); -- @note: calculations: https://github.com/iearn-finance/yearn-api/blob/1a47791c44c245c433875ca5c4cb473bb5e98cce/services/vaults/apy/save/handler.js#L60
+
+  vaults-apy-save:
+    handler: services/vaults/apy/save/handler.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(30 minutes)
+          enabled: ${self:custom.${self:provider.stage}.jobs-schedule.enabled}
+
+  vaults-holdings:
+    handler: services/vaults/holdings/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /vaults/holdings
+          method: get
+          cors: true
+          documentation:
+            summary: Gets holdings for all V1 Vaults, Earn products, YFI staked in governance and veCRV.
+            tags:
+              - Vaults
+            description: >
+              Vault holdings is calculated based on strategy + vault holdings per vault.
+
+  vaults-holdings-save:
+    handler: services/vaults/holdings/save/handler.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(1 hour)
+          enabled: ${self:custom.${self:provider.stage}.jobs-schedule.enabled}
+
+  tvl:
+    handler: services/tvl/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /tvl
+          method: get
+          cors: true
+          documentation:
+            summary: fetches from DB the TVL.
+            tags:
+              - TVL
+            description: >
+              If param ?historic=true is passed, then all TVLs are delivered, if not, then only last TVL is delivered.
+            queryParams:
+              - name: 'historic'
+                description: 'if true, then the full historic TVL values from DB are delivered'
+                type: 'boolean'
+                required: false
+  tvl-save:
+    handler: services/tvl/save/handler.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(1 hour)
+          enabled: ${self:custom.${self:provider.stage}.jobs-schedule.enabled}
+
+  # /user
+  user-vaults:
+    handler: services/user/vaults/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /user/{userAddress}/vaults
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                userAddress: true
+              querystrings:
+                apy: false
+                statistics: false
+                transactions: false
+                showall: false
+          documentation:
+            summary: Gets all vaults a user has interacted with
+            tags:
+              - User
+            description: >
+              Optionally include vault statistics and transactions per user. Valid query param values are "true" and "false"
+            pathParams:
+              - name: 'userAddress'
+                description: 'User account address. Format: 0x{...}'
+            queryParams:
+              - name: 'apy'
+                description: 'Include vault APY'
+                type: 'boolean'
+                required: false
+              - name: 'transactions'
+                description: 'Include user vault transactions'
+                type: 'boolean'
+                required: false
+              - name: 'showall'
+                description: 'Inclue all vaults (including vaults the user has not interacted with)'
+                type: 'boolean'
+                required: false
+              - name: 'statistics'
+                description: 'Include user vault statistics (deposits, withdraws, transfers)'
+                type: 'boolean'
+                required: false
+
+  user-vaults-transactions:
+    handler: services/user/vaults/transactions/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /user/{userAddress}/vaults/transactions
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                userAddress: true
+          documentation:
+            summary: Gets all user transactions per vault (deposits, withdraws, transferIn, transferOut)
+            tags:
+              - User
+            description: >
+              Includes amount/shares, calculated by tracing the Yearn vault contract methods. Transactions come from the Yearn subgraph.
+            pathParams:
+              - name: 'userAddress'
+                description: 'User account address. Format: 0x{...}'
+
+  user-vaults-statistics:
+    handler: services/user/vaults/statistics/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /user/{userAddress}/vaults/statistics
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                userAddress: true
+          documentation:
+            summary: Gets vault statistics assocaited with a user. Total earnings, deposits, withdrawals, transfers.
+            tags:
+              - User
+            description: >
+              Currently earnings include token transfer events (such as zaps). This should be configurable in the future. Statistics come from the Yearn subgraph.
+            pathParams:
+              - name: 'userAddress'
+                description: 'User account address. Format: 0x{...}'
+
+  user-vaults-earnings:
+    handler: services/user/vault/earnings/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /user/{userAddress}/vaults/earnings
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                userAddress: true
+            documentation:
+              pathParams:
+                - name: 'userAddress'
+                  description: 'User account address. Format: 0x{...}'
+
+  # /loanscan
+  loanscan-link:
+    handler: services/loanscan/link/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /loanscan/link
+          method: get
+          cors: true
+          documentation:
+            summary: Gets LINK vault APY
+            tags:
+              - Loanscan
+            description: >
+              LINK APY actually comes from the aLINK vault. aLINK vault cannot be relied on directly due to use of insurance
+
+  loanscan-eth-stable:
+    handler: services/loanscan/eth-stable/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /loanscan/ethstable
+          method: get
+          cors: true
+          documentation:
+            summary: Gets stablecoin vault APYs and ETH vault APY
+            tags:
+              - Loanscan
+            description: >
+              APY for following vaults: ETH, USDC, USDT, TUSD, DAI
+
+  loanscan-ycrv:
+    handler: services/loanscan/ycrv/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /loanscan/ycrv
+          method: get
+          cors: true
+          documentation:
+            summary: Gets yCrv vault APY aggregated with Curve pool APY
+            tags:
+              - Loanscan
+            description: >
+              yCrv APY is an aggregate APY. This API combines vault APY with underlying Curve pool APY. Aggregation formula: ((1 + poolApy) * (1 + vaultApy) - 1) * 100;
+
+  loanscan-crvbtc:
+    handler: services/loanscan/crvbtc/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /loanscan/crvbtc
+          method: get
+          cors: true
+          documentation:
+            summary: Gets crvBTC vault APY aggregated with Curve pool APY
+            tags:
+              - Loanscan
+            description: >
+              crvBTC APY is an aggregate APY. This API combines vault APY with underlying Curve pool APY. Aggregation formula: ((1 + poolApy) * (1 + vaultApy) - 1) * 100;
+
+  loanscan-crvbusd:
+    handler: services/loanscan/crvbusd/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /loanscan/crvbusd
+          method: get
+          cors: true
+          documentation:
+            summary: Gets crvBUSD vault APY aggregated with Curve pool APY
+            tags:
+              - Loanscan
+            description: >
+              crvBUSD APY is an aggregate APY. This API combines vault APY with underlying Curve pool APY. Aggregation formula: ((1 + poolApy) * (1 + vaultApy) - 1) * 100;
+
+  # /yearn
+  yearn-repos-save:
+    handler: services/yearn/repos/save/handler.handler
+    timeout: 300
+
+  yearn-repos:
+    handler: services/yearn/repos/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /yearn/repos
+          method: get
+          cors: true
+          documentation:
+            summary: Gets list of all Yearn repos and contributors
+            tags:
+              - Yearn
+
+  yearn-repos-statistics:
+    handler: services/yearn/repos/statistics/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /yearn/repos/statistics
+          method: get
+          cors: true
+          documentation:
+            summary: Gets basic Yearn repo statistics
+            tags:
+              - Yearn
+
+  yearn-repos-contributors:
+    handler: services/yearn/repos/contributors/handler.handler
+    timeout: 30
+    events:
+      - http:
+          path: /yearn/repos/contributors
+          method: get
+          cors: true
+          documentation:
+            summary: Gets list of all Yearn contributors
+            tags:
+              - Yearn

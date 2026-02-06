@@ -1,0 +1,201 @@
+  # Welcome to Serverless!
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: session
+custom:
+  config: ${file(./config/${opt:stage}.js):config}
+provider:
+  name: aws
+  region: us-west-2
+  runtime: nodejs4.3
+  cfLogs: true 
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Scan
+        - dynamodb:Query
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:BatchGetItem
+        - dynamodb:BatchWriteItem
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:*
+    - Effect: Allow
+      Action:
+        - ec2:CreateNetworkInterface
+        - ec2:DescribeNetworkInterfaces
+        - ec2:DeleteNetworkInterface
+      Resource: "*"
+  environment:
+    STAGE: ${opt:stage}
+    USERS_TABLE: ${self:custom.config.UsersTable}
+    REFRESH_TOKEN_TABLE: ${self:custom.config.RefreshTokenTable}
+    ACCESS_TOKEN_EXPIRATION: ${self:custom.config.AccessTokenExpiration}
+    REFRESH_TOKEN_EXPIRATION: ${self:custom.config.RefreshTokenExpiration}
+    LOG_LEVEL: ${self:custom.config.LogLevel}
+    API_ID_SALT: ${self:custom.config.ApiIdSalt} # salts must be encrypted in configs - use AWS KMS to decrypt at run-time
+    PASSWORD_SALT: ${self:custom.config.PasswordSalt} # salts must be encrypted in configs - use AWS KMS to decrypt at run-time
+
+# NOTE: vpc deployment can fail due to a race condition in CFT: functions are being created before the role permissions are ready
+# see: https://github.com/serverless/serverless/issues/2780
+# until this is fixed, you have to do an initial sls deploy in 2 passes:
+# 1. sls deploy with iamRoleStatements including the proper ec2 actions
+# 2. then sls deploy with vpc configs
+# if you don't want to run your function from a VPC, set config.VPC to an empty object:
+  vpc: ${self:custom.config.VPC}
+  #profile: ko-playground-admin
+
+package:
+  exclude:
+    - gulpfile.js
+    - lambda_functions/**/*.test.js
+    - lib/**/*.test.js
+    - config
+
+functions:
+  ping:
+    handler: handler.ping
+    events:
+      - http:
+          path: ping
+          method: GET
+          cors: true
+  getSession:
+    handler: handler.getSession
+    events:
+        - http: 
+            path: session
+            method: GET
+            cors: true
+            authorizer: 
+              name: authorizer
+              resultTtlInSeconds: 3
+              identitySource: method.request.header.Authorization
+  createSession:
+    handler: handler.createSession
+    events:
+        - http:
+            path: session
+            method: POST
+            cors: true
+            authorizer:
+              name: clientIdAuthorizer
+              resultTtlInSeconds: 300
+              identitySource: method.request.header.x-koms-clientid
+  refreshSession:
+    handler: handler.refreshSession
+    events:
+        - http:
+            path: session
+            method: PUT
+            cors: true
+            authorizer:
+              name: clientIdAuthorizer
+              resultTtlInSeconds: 300
+              identitySource: method.request.header.x-koms-clientid
+  deleteSession:
+    handler: handler.deleteSession
+    events:
+        - http:
+            path: session
+            method: DELETE
+            cors: true
+            authorizer: 
+              name: clientIdAuthorizer
+              resultTtlInSeconds: 300
+              identitySource: method.request.header.x-koms-clientid
+  createUser:
+    handler: handler.createUser
+    events:
+        - http: 
+            path: user
+            method: POST
+            cors: true
+            authorizer: 
+              name: clientIdAuthorizer
+              resultTtlInSeconds: 300
+              identitySource: method.request.header.x-koms-clientid
+  getUser:
+    handler: handler.getUser
+    events:
+        - http:
+            path: user
+            method: GET
+            cors: true
+            authorizer: 
+              name: authorizer
+              resultTtlInSeconds: 3
+              identitySource: method.request.header.Authorization
+  authorizer:
+    handler: handler.authorizer
+  clientIdAuthorizer:
+    handler: handler.clientIdAuthorizer
+
+resources:
+  Resources:
+    UserTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+        - AttributeName: Email
+          AttributeType: S
+        - AttributeName: Id
+          AttributeType: S
+        GlobalSecondaryIndexes:
+        - IndexName: Email-index
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            WriteCapacityUnits: 5
+            ReadCapacityUnits: 5
+          KeySchema:
+          - KeyType: HASH
+            AttributeName: Email
+        ProvisionedThroughput:
+          WriteCapacityUnits: 5
+          ReadCapacityUnits: 5
+        TableName: ${self:custom.config.UsersTable}
+        KeySchema:
+        - KeyType: HASH
+          AttributeName: Id
+    TokenTable:
+      Type: AWS::DynamoDB::Table
+      Properties:        
+        AttributeDefinitions:
+        - AttributeName: PrincipalId
+          AttributeType: S
+        - AttributeName: RefreshToken
+          AttributeType: S
+        - AttributeName: AccessToken
+          AttributeType: S
+        GlobalSecondaryIndexes:
+        - IndexName: PrincipalId-index
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            WriteCapacityUnits: 5
+            ReadCapacityUnits: 5
+          KeySchema:
+          - KeyType: HASH
+            AttributeName: PrincipalId
+        - IndexName: AccessToken-index
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            WriteCapacityUnits: 5
+            ReadCapacityUnits: 5
+          KeySchema:
+          - KeyType: HASH
+            AttributeName: AccessToken
+        ProvisionedThroughput:
+          WriteCapacityUnits: 5
+          ReadCapacityUnits: 5
+        TableName: ${self:custom.config.RefreshTokenTable}
+        KeySchema:
+        - KeyType: HASH
+          AttributeName: RefreshToken

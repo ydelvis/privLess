@@ -1,0 +1,20 @@
+# package directories
+node_modules
+jspm_packages
+
+# Serverless directories
+.serverless
+
+# Webpack directories
+.webpack
+
+# Env variables/secrets
+env.yml
+
+yarn.lock
+package-lock.json
+
+.env
+.DS_Store
+
+firebase-adminsdk.json

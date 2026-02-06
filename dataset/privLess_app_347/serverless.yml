@@ -1,0 +1,245 @@
+---
+service: aws-lambda-edge
+
+frameworkVersion: '^1.33.2'
+
+plugins:
+  - serverless-finch
+  - serverless-plugin-cloudfront-lambda-edge
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  region: ${env:AWS_DEFAULT_REGION, 'us-east-1'}
+  stage: ${opt:stage, env:SERVERLESS_STAGE, 'live'}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - 'ssm:GetParameters'
+      Resource:
+        - 'Fn::Join':
+          - ':'
+          - - 'arn:aws:ssm'
+            - Ref: 'AWS::Region'
+            - Ref: 'AWS::AccountId'
+            - 'parameter/app/${self:service}/${self:provider.stage}/*'
+
+functions:
+  app:
+    handler: handlers/app.${self:provider.stage}Handler
+    lambdaAtEdge:
+      distribution: AppDistribution
+      eventType: origin-request
+
+custom:
+  organization: ${ssm:/app/${self:service}/organization}
+  hostedZoneId: ${ssm:/app/${self:service}/hostedZoneId}
+  certificateId: ${ssm:/app/${self:service}/certificateId}
+  appDomain: ${ssm:/app/${self:service}/${self:provider.stage}/appDomain}
+  assetDomain: ${ssm:/app/${self:service}/${self:provider.stage}/assetDomain}
+  client:
+    bucketName: ${self:custom.organization}-${self:service}-assets-${self:provider.stage}
+    distributionFolder: .bucket
+    objectHeaders:
+      ALL_OBJECTS:
+        - name: Cache-Control
+          value: 'public, max-age=31536000, immutable'
+
+package:
+  exclude:
+    - '*/**'
+  include:
+    - 'handlers/*.js'
+    - 'lib/*.js'
+    - 'node_modules/mustache/mustache.js'
+    - 'node_modules/mustache/package.json'
+
+resources:
+  Resources:
+    AppBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.organization}-${self:service}-app-${self:provider.stage}
+    AppDistributionIdentity:
+      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: ${self:custom.organization}-${self:service}-app-${self:provider.stage}
+    AppBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: { Ref: 'AppBucket' }
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS:
+                  - 'Fn::Join':
+                    - ' '
+                    - - 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity'
+                      - Ref: 'AppDistributionIdentity'
+              Action:
+                - 's3:GetObject'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - Ref: 'AppBucket'
+                    - '/*'
+            - Effect: Allow
+              Principal:
+                AWS:
+                  - 'Fn::Join':
+                    - ' '
+                    - - 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity'
+                      - Ref: 'AppDistributionIdentity'
+              Action:
+                - 's3:ListBucket'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - Ref: 'AppBucket'
+    AppDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          PriceClass: PriceClass_100
+          HttpVersion: http2
+          Aliases:
+            - ${self:custom.appDomain}
+          ViewerCertificate:
+            SslSupportMethod: sni-only
+            AcmCertificateArn:
+              'Fn::Join':
+                - ':'
+                - - 'arn:aws:acm'
+                  - Ref: 'AWS::Region'
+                  - Ref: 'AWS::AccountId'
+                  - 'certificate/${self:custom.certificateId}'
+          DefaultCacheBehavior:
+            TargetOriginId: AppBucketOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            MinTTL: 5
+            MaxTTL: 5
+            DefaultTTL: 5
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+          Origins:
+            - Id: AppBucketOrigin
+              DomainName: { 'Fn::GetAtt': [ 'AppBucket', 'DomainName' ] }
+              S3OriginConfig:
+                OriginAccessIdentity:
+                  'Fn::Join':
+                    - ''
+                    - - 'origin-access-identity/cloudfront/'
+                      - Ref: 'AppDistributionIdentity'
+    AppRecord:
+      Type: AWS::Route53::RecordSetGroup
+      Properties:
+        HostedZoneId: ${self:custom.hostedZoneId}
+        RecordSets:
+          - Name: ${self:custom.appDomain}
+            Type: A
+            AliasTarget:
+              HostedZoneId: Z2FDTNDATAQYW2
+              DNSName: { 'Fn::GetAtt': [ 'AppDistribution', 'DomainName' ] }
+    AssetDistributionIdentity:
+      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: ${self:custom.organization}-${self:service}-asset-${self:provider.stage}
+    AssetBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: ${self:custom.client.bucketName}
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS:
+                  - 'Fn::Join':
+                    - ' '
+                    - - 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity'
+                      - Ref: 'AssetDistributionIdentity'
+              Action:
+                - 's3:GetObject'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - ${self:custom.client.bucketName}
+                    - '/*'
+            - Effect: Allow
+              Principal:
+                AWS:
+                  - 'Fn::Join':
+                    - ' '
+                    - - 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity'
+                      - Ref: 'AssetDistributionIdentity'
+              Action:
+                - 's3:ListBucket'
+              Resource:
+                'Fn::Join':
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - ${self:custom.client.bucketName}
+    AssetDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          PriceClass: PriceClass_100
+          HttpVersion: http2
+          DefaultRootObject: index.html
+          Aliases:
+            - ${self:custom.assetDomain}
+          ViewerCertificate:
+            SslSupportMethod: sni-only
+            AcmCertificateArn:
+              'Fn::Join':
+                - ':'
+                - - 'arn:aws:acm'
+                  - Ref: 'AWS::Region'
+                  - Ref: 'AWS::AccountId'
+                  - 'certificate/${self:custom.certificateId}'
+          DefaultCacheBehavior:
+            TargetOriginId: AssetBucketOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            MinTTL: 31536000
+            MaxTTL: 31536000
+            DefaultTTL: 31536000
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: 'none'
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            CachedMethods:
+              - GET
+              - HEAD
+          Origins:
+            - Id: AssetBucketOrigin
+              DomainName: ${self:custom.client.bucketName}.s3.amazonaws.com
+              S3OriginConfig:
+                OriginAccessIdentity:
+                  'Fn::Join':
+                    - ''
+                    - - 'origin-access-identity/cloudfront/'
+                      - Ref: 'AssetDistributionIdentity'
+    AssetRecord:
+      Type: AWS::Route53::RecordSetGroup
+      Properties:
+        HostedZoneId: ${self:custom.hostedZoneId}
+        RecordSets:
+          - Name: ${self:custom.assetDomain}
+            Type: A
+            AliasTarget:
+              HostedZoneId: Z2FDTNDATAQYW2
+              DNSName: { 'Fn::GetAtt': [ 'AssetDistribution', 'DomainName' ] }

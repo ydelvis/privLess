@@ -1,0 +1,48 @@
+{
+  "name": "idp_example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "handler.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/C0k3/session.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "nyc": {
+    "exclude": [
+      "lib/AuthPolicy.js",
+      "node_modules"
+    ]
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.4.14",
+    "chai": "^3.5.0",
+    "eslint": "^3.8.1",
+    "git-guppy": "^1.2.1",
+    "gulp": "^3.9.1",
+    "gulp-env": "^0.4.0",
+    "gulp-jshint": "^2.0.1",
+    "gulp-jshint-html-reporter": "^0.1.3",
+    "gulp-mocha": "^3.0.1",
+    "guppy-pre-commit": "^0.3.0",
+    "jshint": "^2.9.2",
+    "jshint-stylish": "^2.2.0",
+    "mocha": "^3.1.2",
+    "mocha-junit-reporter": "^1.12.1",
+    "nconf": "^0.8.4",
+    "nyc": "^8.3.2",
+    "proxyquire": "^1.7.10",
+    "run-sequence": "^1.2.2",
+    "sinon": "^1.17.5",
+    "yamljs": "^0.2.8"
+  },
+  "dependencies": {
+    "bluebird": "^3.4.6",
+    "bunyan": "^1.8.1",
+    "jsonwebtoken": "^7.1.9",
+    "node-forge": "^0.6.43",
+    "source-map-support": "^0.4.5",
+    "uuid": "^2.0.3"
+  }
+}

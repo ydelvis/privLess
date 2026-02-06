@@ -1,0 +1,64 @@
+doctype html
+html(lang='en')
+  head
+    meta(charset='utf-8')
+    title= breadcrumbs.map(item => item.name).join(" / ")
+    meta(name='viewport', content='width=device-width,initial-scale=1')
+    meta(http-equiv='X-UA-Compatible', content='IE=edge')
+
+    if darkTheme
+      link(href='https://maxcdn.bootstrapcdn.com/bootswatch/3.3.7/cyborg/bootstrap.min.css', rel='stylesheet', integrity='sha384-D9XILkoivXN+bcvB2kSOowkIvIcBbNdoDQvfBNsxYAIieZbx8/SI4NeUvrRGCpDi', crossorigin='anonymous')
+    else
+      link(href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css', rel='stylesheet', integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u', crossorigin='anonymous')
+
+    link(href='https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css', rel='stylesheet', integrity='sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN', crossorigin='anonymous')
+    style(type='text/css').
+      body {
+        padding-top: 20px;
+      }
+      i.fa { color: #337ab7; padding-right: 4px; }
+  body
+    .container
+
+      if breadcrumbs.length > 1
+        ol.breadcrumb
+          each item in breadcrumbs
+            if item.active
+              li.breadcrumb-item.active= item.name
+            else
+              li.breadcrumb-item
+                a(href=item.path)= item.name
+
+      .table-responsive
+        table#bs-table.table.table-hover
+          thead
+            tr
+              th.col-sm-8.text-left Name
+              th.col-sm-2.text-right Size
+              th.col-sm-2.text-right Modified
+          tfoot
+            tr
+              td(colspan='4')
+                small.text-muted= summary
+          tbody
+            if pathToUp
+              tr
+                td.text-left
+                  i.fa.fa-folder
+                  a(href=pathToUp)
+                    strong ..
+                td(colspan=2)
+            each directory in directories
+              tr
+                td.text-left
+                  i.fa.fa-folder
+                  a(href=directory)
+                    strong= directory
+                td(colspan=2)
+            each file in files
+              tr
+                td.text-left
+                  i.fa(class=file.fileType)
+                  a(href=file.fileName)= file.fileName
+                td.text-right= file.humanSize
+                td.text-right= file.humanDate

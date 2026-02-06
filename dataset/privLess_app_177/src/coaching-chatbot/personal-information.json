@@ -1,0 +1,14 @@
+[
+  {
+    "identifier": "LOOK_FOR_PEER",
+    "description": "Selaa ohjaajia"
+  },
+  {
+    "identifier": "MANAGE_INFO",
+    "description": "Hallitse tietoja"
+  },
+  {
+    "identifier": "MANAGE_REQUESTS",
+    "description": "Katso pyynnöt"
+  }
+]

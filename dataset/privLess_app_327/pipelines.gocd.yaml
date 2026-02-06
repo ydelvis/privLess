@@ -1,0 +1,325 @@
+pipelines: # Container for all pipelines defined in this file. Each pipeline is an individual Lambda function
+  authorizer: # The name of the lambda function is used for several things. In this case, it is used as the name of an individual pipeline instance
+    group: session # Pipelines are grouped in the Go UI. This denotes that this pipeline should be grouped in the UI into a group called session
+    label_template: "${authorizer[:8]}" # This is used in the UI to represent a label for an individual run of the pipeline - it's the first 8 characters of the git commit hash of the git repo defined in the materials section
+    environment_variables: # A container for environment variables that are scoped at the pipeline level. These can be overridden at lower levels
+      FUNCTION_NAME: authorizer # This environment variable allows the stages of this pipeline to be used as a template for other pipelines. The env variable is used in Lint, unit tests, and deployment actions
+    materials: # These define all sources to the pipeline. In affect, any items defined here will be polled to find any changes to in the source.
+      authorizer: # The name of an individual source
+        git: https://github.com/C0k3/session # Declares 1) This source is a git-based source and 2) The location of the source to poll
+        branch: development # Which branch to look for changes
+        whitelist: # Only changes to files that match these patterns will trigger a change new build
+        - lambda_functions/authorizer/**/*.* # Only artifcats for the authorizer lambda should be matched
+        - lib/**.* # Any changes to shared libraries should trigger the pipeline
+        - "*.js" # Any changes to shared .js files in the root directory should trigger the pipeline
+        - "*.json" # Any changes to shared .json files in the root directory should trigger the pipeline
+        - "*.yml" # Any changes to shared .yml files in the root directory should trigger the pipeline
+        - "*.yaml" # Any changes to shared .yaml files in the root directory should trigger the pipeline
+    stages: &functionStages # This line 1) declares an ordered container for all stages in this pipeline and 2) Creates a reference to those stages so that other pipelines can re-use them.
+      - unit-test: # Declares stage called "unit-testing"
+          clean_workspace: true # Remove all files/directories in the working directory
+          environment_variables: # Define environment variables specifically for the "unit-testing" stage
+            NODE_ENV: development # Defining NODE_ENV to development ensures that devDependencies will be installed defined in package.json
+          artifacts: # Defines outputs of this stage
+          - test: # Lets Go know that the artifact is an XML file in JUnit format that can be parsed and displayed within the Go UI.
+              source: test-results.xml # The output of the task defined in the stage
+              destination: test-reports/ # Where any other pipelines want to reference it
+          tasks: # Defines all tasks of the stage. This task runs a bash script that first installes npm dependencies and then run the gulp unit tests based on a particular lambda.
+          - script: |
+              npm install 
+              node_modules/.bin/gulp test -f $FUNCTION_NAME
+      - lint: # Declares stage called "lint"
+          clean_workspace: true
+          environment_variables:
+            NODE_ENV: development
+          artifacts:
+          - build: # Tells Go to store this file. This file is needed to show the HTML in the Go GUI.
+              source: jshint.html
+          tabs: # Tells Go to add custom tabs in the UI
+            lint: jshint.html # The contents of this HTMl will be shown in the custom tab in the Go UI
+          tasks: # Lint the source for a specific lambda
+          - script: |
+              touch jshint.html
+              npm install
+              node_modules/.bin/gulp lint -f $FUNCTION_NAME
+              true
+      - code-coverage: # Declares stage called "code-coverage"
+          clean_workspace: true
+          environment_variables:
+            NODE_ENV: test
+            COV_LINES: 1 # Used by the second task in this stage to fail if this percentage of lines that are covered by unit tests are less than what is defined here
+            COV_FUNCTIONS: 1 # Used by the second task in this stage to fail if this percentage of functions that are covered by unit tests are less than what is defined here
+            COV_BRANCHES: 1 # Used by the second task in this stage to fail if this percentage of code branches that are covered by unit tests are less than what is defined here
+          artifacts:
+          - build:
+              source: coverage # Let all of the contents of the coverage directory be used by the custom tabs defined in thsi stage
+          tabs:
+            code-coverage: coverage/index.html # The contents fo this file will be shown in a tab called "code-coverage"
+          tasks:
+          - script: |
+              npm install
+              node_modules/.bin/nyc --reporter html node_modules/.bin/gulp test -f $FUNCTION_NAME
+              true
+          - script: |
+              node_modules/.bin/nyc check-coverage --lines $COV_LINES --functions $COV_FUNCTIONS --branches $COV_BRANCHES      
+      - deploy-dev:
+          clean_workspace: true
+          tasks: # deploy the lambda function to the "dev" stage
+          - script: |
+              npm install . --production
+              sls deploy function -f $FUNCTION_NAME --stage dev
+      - stage-for-test:
+          clean_workspace: true
+          tasks: # If all previous stages passed then use environment variables defined in gitPassword to rebase the test-deploy branch off of the development branch
+          - script: |
+              source /etc/gitPassword
+              git checkout test-deploy
+              git rebase --onto development origin
+              git push -f https://$GIT_USERNAME:$GIT_PASSWORD@github.com/C0k3/session 2> /dev/null
+      - deploy-test:
+          clean_workspace: true
+          approval:
+            type: manual # Require someone in the UI to manually approve the execution of this stage
+          tasks: # Pull from the test-deploy branch and deploy the code to the "test" environment
+          - script: |
+              git checkout test-deploy
+              git pull
+              npm install . --production
+              sls deploy function -f $FUNCTION_NAME --stage test
+      - stage-for-prod:
+          clean_workspace: true
+          tasks: # If all previous stages passed then use environment variables defined in gitPassword to rebase the master branch off of the test-deploy branch
+          - script: |
+              source /etc/gitPassword
+              git checkout test-deploy
+              git checkout master
+              git rebase --onto test-deploy origin
+              git push -f https://$GIT_USERNAME:$GIT_PASSWORD@github.com/C0k3/session 2> /dev/null
+      - deploy-prod:
+          clean_workspace: true
+          approval:
+            type: manual # Require someone in the UI to manually approve the execution of this stage
+          tasks: # Pull from the test-deploy branch and deploy the code to the "test" environment
+          - script: |
+              git checkout master
+              git pull
+              npm install . --production
+              sls deploy function -f $FUNCTION_NAME --stage prod
+  clientIdAuthorizer: # Define a new Pipeline for a specific lambda
+    group: session
+    label_template: "${clientIdAuthorizer[:8]}"
+    environment_variables:
+      FUNCTION_NAME: clientIdAuthorizer
+    materials:
+      clientIdAuthorizer:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/clientIdAuthorizer/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages # This allows all of the stages defined above to be re-used for this pipeline
+  createSession:
+    group: session
+    label_template: "${createSession[:8]}"
+    environment_variables:
+      FUNCTION_NAME: createSession
+    materials:
+      createSession:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/createSession/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+  getSession:
+    group: session
+    label_template: "${getSession[:8]}"
+    environment_variables:
+      FUNCTION_NAME: getSession
+    materials:
+      getSession:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/getSession/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+  refreshSession:
+    group: session
+    label_template: "${refreshSession[:8]}"
+    environment_variables:
+      FUNCTION_NAME: refreshSession
+    materials:
+      refreshSession:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/refreshSession/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+  deleteSession:
+    group: session
+    label_template: "${deleteSession[:8]}"
+    environment_variables:
+      FUNCTION_NAME: deleteSession
+    materials:
+      deleteSession:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/deleteSession/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+  createUser:
+    group: session
+    label_template: "${createUser[:8]}"
+    environment_variables:
+      FUNCTION_NAME: createUser
+    materials:
+      createUser:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/createUser/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+  getUser:
+    group: session
+    label_template: "${getUser[:8]}"
+    environment_variables:
+      FUNCTION_NAME: getUser
+    materials:
+      getUser:
+        git: https://github.com/C0k3/session
+        branch: development
+        whitelist:
+        - lambda_functions/getUser/**/*.*
+        - lib/**.*
+        - "*.js"
+        - "*.json"
+        - "*.opts"
+        - "*.yml"
+        - "*.yaml"
+    stages: *functionStages
+
+  create-vpc:
+    group: network-deployment
+    label_template: "${session[:8]}"
+    materials:
+      session:
+        git: https://github.com/C0k3/session # Declares 1) This source is a git based source and 2) The location of the source to poll
+        branch: development # Which branch to look for changes
+    stages:
+      - create:
+          approval:
+            type: manual
+          clean_workspace: true 
+          tasks:
+          - script: |
+              aws --region us-west-2 cloudformation create-stack --stack-name VPC-NAT-GATEWAY --template-url https://s3-us-west-2.amazonaws.com/serverless-vpc/aws-vpc.template --parameters ParameterKey=AvailabilityZones,ParameterValue=\"us-west-2a,us-west-2b\",UsePreviousValue=false
+
+  deploy-dev: 
+    group: full-service-deployment 
+    label_template: "${session[:8]}" # This is used in the UI to represent a label for an individual run of the pipeline
+    materials:
+      session:
+        git: https://github.com/C0k3/session # Declares 1) This source is a git based source and 2) The location of the source to poll
+        branch: development # Which branch to look for changes
+    stages:
+      - test: &testStage
+          clean_workspace: true
+          jobs :
+            unit-test :
+              environment_variables:
+                NODE_ENV: development
+              artifacts:
+              - test:
+                  source: test-results.xml
+                  destination: test-reports/
+              tasks:
+              - script: |
+                  npm install 
+                  node_modules/.bin/gulp test
+            lint :
+              artifacts:
+              - build: # Tells Go to store this file. This file is needed to show the HTML in the Go GUI.
+                  source: jshint.html
+              tabs: # Tells Go to add custom tabs in the UI
+                lint: jshint.html # The contents of this HTMl will be shown in the custom tab in the Go UI
+              tasks: # Lint the source for a specific lambda
+              - script: |
+                  touch jshint.html
+                  npm install
+                  node_modules/.bin/gulp lint
+                  true
+      - deploy:
+          approval: manual
+          clean_workspace: true
+          tasks:
+          - script: |
+              npm install --production
+              sls deploy --stage dev
+  deploy-test: 
+    group: full-service-deployment 
+    label_template: "${session[:8]}"
+    materials:
+      session:
+        git: https://github.com/C0k3/session
+        branch: development
+    stages:
+      - test: *testStage
+      - deploy:
+          approval:
+            type: manual
+          clean_workspace: true
+          tasks:
+          - script: |
+              npm install --production
+              sls deploy --stage test
+  deploy-prod: 
+    group: full-service-deployment 
+    label_template: "${session[:8]}"
+    materials:
+      session:
+        git: https://github.com/C0k3/session
+        branch: master
+    stages:
+      - test: *testStage
+      - deploy:
+          approval:
+            type: manual
+          clean_workspace: true
+          tasks:
+          - script: |
+              npm install --production
+              sls deploy --stage prod

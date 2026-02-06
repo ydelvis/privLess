@@ -1,0 +1,89 @@
+service: serverless-sagas
+
+custom:
+  region: ${opt:region, self:provider.region}
+  hotelBookingsTableName: ${self:service}-${self:provider.stage}-hotel-bookings
+  carBookingsTableName: ${self:service}-${self:provider.stage}-car-bookings
+  flightBookingsTableName: ${self:service}-${self:provider.stage}-flight-bookings
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  stage: dev
+  environment:
+    HOTEL_BOOKINGS_TABLE_NAME: ${self:custom.hotelBookingsTableName}
+    CAR_BOOKINGS_TABLE_NAME: ${self:custom.carBookingsTableName}
+    FLIGHT_BOOKINGS_TABLE_NAME: ${self:custom.flightBookingsTableName}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+      Resource:
+        - arn:aws:dynamodb:${self:custom.region}:*:table/${self:custom.hotelBookingsTableName}
+        - arn:aws:dynamodb:${self:custom.region}:*:table/${self:custom.carBookingsTableName}
+        - arn:aws:dynamodb:${self:custom.region}:*:table/${self:custom.flightBookingsTableName}
+
+functions:
+  bookHotel:
+    handler: functions/bookHotel.handler
+
+  bookCar:
+    handler: functions/bookCar.handler
+
+  bookFlight:
+    handler: functions/bookFlight.handler
+
+  cancelHotel:
+    handler: functions/cancelHotel.handler
+
+  cancelCar:
+    handler: functions/cancelCar.handler
+
+  cancelFlight:
+    handler: functions/cancelFlight.handler
+
+resources:
+  Resources:
+    hotelBookingsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.hotelBookingsTableName}
+        AttributeDefinitions:
+          - AttributeName: tripId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tripId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    carBookingsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.carBookingsTableName}
+        AttributeDefinitions:
+          - AttributeName: tripId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tripId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    flightBookingsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.flightBookingsTableName}
+        AttributeDefinitions:
+          - AttributeName: tripId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tripId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

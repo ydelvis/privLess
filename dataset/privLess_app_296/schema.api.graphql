@@ -1,0 +1,366 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Query {
+  getImageUploadUrl(extension: String, contentType: String): AWSURL!
+
+  getMyTimeline(limit: Int!, nextToken: String): UnhydratedTweetsPage!
+
+  getMyProfile: MyProfile!
+
+  getProfile(screenName: String!): OtherProfile
+
+  getTweets(userId: ID!, limit: Int!, nextToken: String): TweetsPage!
+
+  getLikes(userId: ID!, limit: Int!, nextToken: String): UnhydratedTweetsPage!
+
+  getFollowers(userId: ID!, limit: Int!, nextToken: String): ProfilesPage!
+
+  getFollowing(userId: ID!, limit: Int!, nextToken: String): ProfilesPage!
+
+  search(
+    query: String!,
+    mode: SearchMode!,
+    limit: Int!,
+    nextToken: String
+  ): SearchResultsPage!
+
+  getHashTag(
+    hashTag: String!,
+    mode: HashTagMode!,
+    limit: Int!,
+    nextToken: String
+  ): HashTagResultsPage!
+
+  listConversations(
+    limit: Int!
+    nextToken: String
+  ): ConversationsPage!
+
+  getDirectMessages(
+    otherUserId: ID!
+    limit: Int!
+    nextToken: String
+  ): MessagesPage!
+
+  getAnalyticsConfig: AnalyticsConfig
+  @aws_iam @aws_cognito_user_pools
+}
+
+type Mutation {
+  editMyProfile(newProfile: ProfileInput!): MyProfile!
+  
+  tweet(text: String!): Tweet!
+
+  like(tweetId: ID!): Boolean!
+
+  unlike(tweetId: ID!): Boolean!
+
+  retweet(tweetId: ID!): Retweet!
+
+  unretweet(tweetId: ID!): Boolean!
+
+  reply(tweetId: ID!, text: String!): Reply!
+
+  follow(userId: ID!): Boolean!
+
+  unfollow(userId: ID!): Boolean!
+
+  notifyRetweeted(
+    id: ID!
+    userId: ID!
+    tweetId: ID!
+    retweetedBy: ID!
+    retweetId: ID!
+  ): Notification!
+  @aws_iam
+
+  notifyLiked(
+    id: ID!
+    userId: ID!
+    tweetId: ID!
+    likedBy: ID!
+  ): Notification!
+  @aws_iam
+
+  notifyMentioned(
+    id: ID!
+    userId: ID!
+    mentionedBy: ID!
+    mentionedByTweetId: ID!
+  ): Notification!
+  @aws_iam
+
+  notifyReplied(
+    id: ID!
+    userId: ID!
+    tweetId: ID!
+    replyTweetId: ID!
+    repliedBy: ID!
+  ): Notification!
+  @aws_iam
+
+  notifyDMed(
+    id: ID!
+    userId: ID!
+    otherUserId: ID!
+    message: String!
+  ): Notification!
+  @aws_iam
+
+  sendDirectMessage(
+    otherUserId: ID!
+    message: String!
+  ): Conversation!
+}
+
+type Subscription {
+  onNotified(userId: ID!, type: NotificationType): Notification
+  @aws_subscribe(mutations: ["notifyRetweeted", "notifyLiked", "notifyMentioned", "notifyReplied", "notifyDMed"])
+}
+
+enum SearchMode {
+  Top
+  Latest
+  People
+  Photos
+  Videos
+}
+
+enum HashTagMode {
+  Top
+  Latest
+  People
+  Photos
+  Videos
+}
+
+input ProfileInput {
+  name: String!
+  imageUrl: AWSURL
+  backgroundImageUrl: AWSURL
+  bio: String
+  location: String
+  website: AWSURL
+  birthdate: AWSDate
+}
+
+interface IProfile {
+  id: ID!
+  name: String!
+  screenName: String!
+  imageUrl: AWSURL
+  backgroundImageUrl: AWSURL
+  bio: String
+  location: String
+  website: AWSURL
+  birthdate: AWSDate
+  createdAt: AWSDateTime!
+  tweets: TweetsPage!
+  followersCount: Int!
+  followingCount: Int!
+  tweetsCount: Int!
+  likesCount: Int!
+}
+
+type MyProfile implements IProfile {
+  id: ID!
+  name: String!
+  screenName: String!
+  imageUrl: AWSURL
+  backgroundImageUrl: AWSURL
+  bio: String
+  location: String
+  website: AWSURL
+  birthdate: AWSDate
+  createdAt: AWSDateTime!
+  tweets: TweetsPage!
+  followersCount: Int!
+  followingCount: Int!
+  tweetsCount: Int!
+  likesCount: Int!
+}
+
+type OtherProfile implements IProfile {
+  id: ID!
+  name: String!
+  screenName: String!
+  imageUrl: AWSURL
+  backgroundImageUrl: AWSURL
+  bio: String
+  location: String
+  website: AWSURL
+  birthdate: AWSDate
+  createdAt: AWSDateTime!
+  tweets: TweetsPage!
+  followersCount: Int!
+  followingCount: Int!
+  tweetsCount: Int!
+  likesCount: Int!  
+  following: Boolean!
+  followedBy: Boolean!
+}
+
+interface ITweet {
+  id: ID!
+  profile: IProfile
+  createdAt: AWSDateTime!
+}
+
+type Tweet implements ITweet {
+  id: ID!
+  profile: IProfile
+  createdAt: AWSDateTime!
+  text: String!
+  replies: Int!
+  likes: Int!
+  retweets: Int!
+  liked: Boolean!
+  retweeted: Boolean!
+}
+
+type Reply implements ITweet {
+  id: ID!
+  profile: IProfile
+  createdAt: AWSDateTime!
+  inReplyToTweet: ITweet!
+  inReplyToUsers: [IProfile!]
+  text: String!
+  replies: Int!
+  likes: Int!
+  retweets: Int!
+  liked: Boolean!
+  retweeted: Boolean!  
+}
+
+type Retweet implements ITweet {
+  id: ID!
+  profile: IProfile
+  createdAt: AWSDateTime!
+  retweetOf: ITweet!
+}
+
+type TweetsPage {
+  tweets: [ITweet!]
+  nextToken: String
+}
+
+type UnhydratedTweetsPage {
+  tweets: [ITweet!]
+  nextToken: String
+}
+
+type ProfilesPage {
+  profiles: [IProfile!]
+  nextToken: String
+}
+
+union SearchResult = MyProfile | OtherProfile | Tweet | Reply
+
+type SearchResultsPage {
+  results: [SearchResult!]
+  nextToken: String
+}
+
+union HashTagResult = MyProfile | OtherProfile | Tweet | Reply
+
+type HashTagResultsPage {
+  results: [HashTagResult!]
+  nextToken: String
+}
+
+type Retweeted implements iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  tweetId: ID!
+  retweetedBy: ID!
+  retweetId: ID!
+  createdAt: AWSDateTime!
+}
+
+type Liked implements iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  tweetId: ID!
+  likedBy: ID!
+  createdAt: AWSDateTime!
+}
+
+type Mentioned implements iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  mentionedBy: ID!
+  mentionedByTweetId: ID!
+  createdAt: AWSDateTime!
+}
+
+type Replied implements iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  tweetId: ID!
+  replyTweetId: ID!
+  repliedBy: ID!
+  createdAt: AWSDateTime!
+}
+
+type DMed implements iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  otherUserId: ID!
+  message: String!
+  createdAt: AWSDateTime!
+}
+
+union Notification @aws_iam @aws_cognito_user_pools = Retweeted | Liked | Mentioned | Replied | DMed
+
+interface iNotification @aws_iam @aws_cognito_user_pools {
+  id: ID!
+  type: NotificationType!
+  userId: ID!
+  createdAt: AWSDateTime!
+}
+
+enum NotificationType {
+  Retweeted
+  Liked
+  Mentioned
+  Replied
+  DMed
+}
+
+type Conversation {
+  id: ID!
+  otherUser: OtherProfile!
+  lastMessage: String!
+  lastModified: AWSDateTime!
+}
+
+type ConversationsPage {
+  conversations: [Conversation!]
+  nextToken: String
+}
+
+type Message {
+  messageId: ID!
+  from: IProfile!
+  message: String!
+  timestamp: AWSDateTime!
+}
+
+type MessagesPage {
+  messages: [Message!]
+  nextToken: String
+}
+
+type AnalyticsConfig @aws_iam @aws_cognito_user_pools {
+  identityPoolId: ID!
+  streamName: String!
+}

@@ -1,0 +1,15 @@
+{
+  "name": "graphql-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "christopherbiscardi <chris@christopherbiscardi.com> (@chrisbiscardi)",
+  "license": "MIT",
+  "dependencies": {
+    "apollo-server-lambda": "^2.10.0",
+    "aws-sdk": "^2.619.0",
+    "bent": "^7.0.6",
+    "faunadb": "^2.11.1",
+    "graphql": "^14.6.0",
+    "uuid": "^3.4.0"
+  }
+}

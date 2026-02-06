@@ -1,0 +1,12 @@
+# package directories
+node_modules
+
+# Serverless directories
+.serverless
+
+# Compiled directories
+src/client/dist
+
+# other
+/design/
+.DS_Store

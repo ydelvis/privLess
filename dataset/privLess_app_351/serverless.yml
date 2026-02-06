@@ -1,0 +1,107 @@
+service: spm
+
+plugins:
+  - serverless-domain-manager
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  customDomain:
+    domainName: spm.wdsm.io
+    basePath: ''
+    certificateName: '*.wdsm.io'
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  memorySize: 256
+  environment:
+    S3: ${self:service}-storage-${opt:stage, self:provider.stage}
+    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    SLS_STAGE: ${self:custom.stage}
+  iamRoleStatements:
+    - Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:DeleteItem
+        - dynamodb:BatchWriteItem
+      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+      Effect: Allow
+    - Effect: Allow
+      Action:
+        - "s3:*"
+      Resource: "arn:aws:s3:::${self:provider.environment.S3}/*"
+
+functions:
+  auth:
+    handler: src/auth.authorize
+  index:
+    handler: src/home.handler
+    events:
+      - http:
+          path: /
+          method: get
+
+  verify:
+    handler: src/verify.handler
+    events:
+      - http:
+          path: /verify
+          method: get
+          cors: true
+          authorizer:
+            name: auth
+            resultTtlInSeconds: 300
+            identitySource: method.request.header.Authorization
+            type: token
+
+  sync:
+    handler: src/sync.handler
+    events:
+      - http:
+          path: /sync
+          method: ANY
+          cors: true
+          authorizer:
+            name: auth
+            resultTtlInSeconds: 300
+            identitySource: method.request.header.Authorization
+            type: token
+
+  batch:
+    handler: src/batch.handler
+    events:
+      - http:
+          path: /batch
+          method: ANY
+          cors: true
+          authorizer:
+            name: auth
+            resultTtlInSeconds: 300
+            identitySource: method.request.header.Authorization
+            type: token
+
+resources:
+  Resources:
+    SPMDB:
+      Type: "AWS::DynamoDB::Table"
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: token
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: token
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}

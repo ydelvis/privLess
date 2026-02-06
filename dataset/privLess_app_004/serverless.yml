@@ -1,0 +1,77 @@
+service: go-sls-crudl
+
+provider:
+  name: aws
+  runtime: go1.x
+  environment:
+        TABLE_NAME: movies-${opt:stage, self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:*:*:*"
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**
+
+functions:
+  list:
+    handler: bin/list-by-year
+    events:
+      - http:
+          path: movies/{year}
+          method: get
+  get:
+    handler: bin/get
+    events:
+      - http:
+          path: movies/{year}/{title}
+          method: get
+  post:
+    handler: bin/post
+    events:
+      - http:
+          path: movies
+          method: post
+  delete:
+    handler: bin/delete
+    events:
+      - http:
+          path: movies/{year}/{title}
+          method: delete
+  put:
+    handler: bin/put
+    events:
+      - http:
+          path: movies
+          method: put
+
+resources:
+  Resources:
+    GoCrudDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: year
+            AttributeType: N
+          - AttributeName: title
+            AttributeType: S
+        KeySchema:
+          - AttributeName: year
+            KeyType: HASH
+          - AttributeName: title
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: 'movies-${opt:stage, self:provider.stage}'

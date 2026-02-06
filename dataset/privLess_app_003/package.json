@@ -1,0 +1,15 @@
+{
+  "name": "serverless-daily-standup-bot",
+  "private": true,
+  "scripts": {
+    "deploy": "sls deploy --verbose",
+    "remove": "sls remove",
+    "invoke": "sls invoke",
+    "logs": "sls logs",
+    "sam-export": "sls sam export --output template.yaml"
+  },
+  "devDependencies": {
+    "serverless": "^1.63.0",
+    "serverless-sam": "^0.2.0"
+  }
+}

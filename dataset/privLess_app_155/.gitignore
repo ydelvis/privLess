@@ -1,0 +1,11 @@
+node_modules
+yarn.lock
+package-lock.json
+yarn-error.log
+.serverless
+dist
+.test_output
+.nyc_output
+coverage
+gh-pages
+.dynamodb

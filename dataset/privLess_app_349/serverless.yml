@@ -1,0 +1,69 @@
+service: sls-strapi
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  profile: <your-aws-profile>
+  logRetentionInDays: ${self:custom.vars.logRetentionInDays, 1}
+
+  environment:
+    ADMIN_JWT_SECRET: "Just using dummy"
+    BUCKET_NAME: !Ref S3StaticBucket
+    # URL from a free Mongo Atlas cluster.
+    MONGODB_URI: "mongodb+srv://strapiowner:PASSWORD@cluster0.weldo.mongodb.net/strapi?retryWrites=true&w=majority"
+  
+  iamRoleStatements:
+    - Effect: Allow
+      Action: 
+        - "s3:*"
+      Resource: 
+        - !Sub 
+          - "#{BucketArn}/*"
+          - BucketArn: !GetAtt S3StaticBucket.Arn
+        - !GetAtt S3StaticBucket.Arn
+
+    
+
+package:
+  exclude:
+    - ./**
+  include:
+    - node_modules/**
+    - "!node_modules/.cache/**"
+    - api/**
+    - config/**
+    - extensions/**
+    - plugins/**
+    - package.json
+    - app.js
+
+functions:
+  api:
+    handler: app.handler
+    memorySize: 1024
+    timeout: 24
+    events:
+      - http:
+          path: /
+          method: ANY
+          cors: true
+      - http:
+          path: /{any+}
+          method: ANY
+          cors: true
+
+
+resources:
+  Resources:  
+    S3StaticBucket:
+      Type: AWS::S3::Bucket
+      
+custom:
+  apigwBinary:
+    types:
+      - "multipart/form-data"
+
+plugins:
+  - serverless-offline
+  - serverless-cloudformation-sub-variables
+  - serverless-apigw-binary

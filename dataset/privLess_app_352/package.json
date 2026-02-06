@@ -1,0 +1,17 @@
+{
+  "name": "image-analysis",
+  "version": "1.0.0",
+  "description": "",
+  "main": "handler.js",
+  "scripts": {
+    "start:dev": "sls invoke local -f image-analysis --path request.json",
+    "start:prod": "sls invoke -f image-analysis --path request.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.698.0",
+    "axios": "^0.19.2"
+  }
+}

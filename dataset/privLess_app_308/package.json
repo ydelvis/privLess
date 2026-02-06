@@ -1,0 +1,37 @@
+{
+  "name": "realtime-transport-dashboards",
+  "version": "1.0.0",
+  "description": "Serverless APIs for AWS to build and display public transportation real time data (Serverless application example)",
+  "main": "index.js",
+  "scripts": {
+    "test:eslint": "eslint .",
+    "test": "npm run test:eslint",
+    "deploy": "serverless deploy",
+    "cleanup": "serverless remove"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lmammino/realtime-transport-dashboards.git"
+  },
+  "keywords": [],
+  "author": "Luciano Mammino",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/lmammino/realtime-transport-dashboards/issues"
+  },
+  "homepage": "https://github.com/lmammino/realtime-transport-dashboards#readme",
+  "devDependencies": {
+    "eslint": "^6.5.0",
+    "eslint-config-standard": "^14.1.0",
+    "eslint-plugin-import": "^2.18.2",
+    "eslint-plugin-node": "^10.0.0",
+    "eslint-plugin-promise": "^4.2.1",
+    "eslint-plugin-standard": "^4.0.1",
+    "serverless": "^3.26.0"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.539.0",
+    "public-transport-ireland": "^1.4.0",
+    "uuid": "^3.3.3"
+  }
+}

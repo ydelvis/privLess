@@ -1,0 +1,223 @@
+service: 
+  name: ${{env:SERVICE}}
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: us-east-1
+  variableSyntax: "\\${{([\\s\\S]+?)}}" 
+  stage: ${{opt:stage, 'dev'}}
+  environment:
+    KINESIS_STREAM: ${{self:service}}-${{self:provider.stage}}-stream
+    KINESIS_FIREHOSE: ${{self:service}}-${{self:provider.stage}}-firehose
+    S3_BUCKET: ${{self:service}}-${{self:provider.stage}}-bucket
+    DYNAMO_TABLE: ${{self:service}}-${{self:provider.stage}}-table
+    ES_DOMAIN: ${{self:service}}-${{self:provider.stage}}-cluster
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "kinesis:PutRecord"
+      Resource:
+        - Fn::GetAtt:
+          - EventStream
+          - Arn
+    - Effect: "Allow"
+      Action:
+        - "kms:decrypt"
+      Resource: "*"
+
+plugins:
+ - serverless-apigw-binary
+
+custom:
+  apigwBinary:
+    types:          
+      - '*/*'
+
+functions:
+  tracker:
+    handler: handler.tracker
+    environment:
+      COOKIE_NAME: "${{env:COOKIE_NAME}}"
+      SIGNATURE: "${{env:SIGNATURE}}"
+      STREAM_NAME: 
+        Ref: EventStream
+    events:
+      - http:
+          path: track.gif
+          method: get
+          response:
+
+resources:
+  Description: Tracking pixel CF template, creating ES, Firehose and KMS
+  Outputs:
+    DeliveryStream:
+      Description: The FireHose Delivery Stream.
+      Value: 
+        Ref: 'DeliveryStream'
+    FirehoseBackupBucket:
+      Description: The FireHose Delivery backup S3 bucket.
+      Value: 
+        Ref: 'FirehoseBackupBucket'
+    SearchClusterArn:
+      Description: The ElasticSearch Service cluster ARN.
+      Value: 
+        Fn::GetAtt: ['SearchCluster','DomainArn']
+    SearchClusterEndpoint:
+      Description: The ElasticSearch Service cluster endpoint.
+      Value: 
+        Fn::GetAtt: ['SearchCluster','DomainEndpoint']
+    KMSArns:
+      Description: The KMS Service ARN.
+      Value: 
+        Fn::GetAtt: ['SearchCluster','DomainEndpoint']
+    EncryptionKeyAlias:
+      Description: The KMS Service Alias.
+      Value: 
+       Ref: 'EncryptionKeyAlias'
+  
+  Resources:
+    EncryptionKey: 
+      Type: "AWS::KMS::Key"
+      Properties: 
+        Description: "Encryption key for ${{self:service}} (${{self:provider.stage}})"
+        KeyPolicy: 
+          Version: "2012-10-17"
+          Id: ${{self:service}}-${{self:provider.stage}}
+          Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+                Fn::Sub: "arn:aws:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: '*'
+          - Effect: Allow
+            Principal:
+              AWS: 
+                Fn::GetAtt: [ IamRoleLambdaExecution, Arn]
+            Action: kms:decrypt
+            Resource: '*'
+
+    EncryptionKeyAlias:
+      Type: AWS::KMS::Alias
+      Properties:
+        AliasName: alias/${{self:provider.stage}}/${{self:service}}
+        TargetKeyId:
+          Ref: EncryptionKey
+
+    SearchCluster:
+      Type: "AWS::Elasticsearch::Domain"
+      Properties:
+        DomainName: "${{self:provider.environment.ES_DOMAIN}}"
+        ElasticsearchVersion: 5.5
+        ElasticsearchClusterConfig: 
+          InstanceCount: "1"
+          ZoneAwarenessEnabled: "false"
+          InstanceType: "t2.small.elasticsearch"
+        EBSOptions: 
+          EBSEnabled: true
+          VolumeSize: 20
+          VolumeType: "gp2"
+        SnapshotOptions: 
+          AutomatedSnapshotStartHour: "0"
+        AdvancedOptions: 
+          rest.action.multi.allow_explicit_index: "true"
+
+    FirehoseBackupBucket:
+      Type: "AWS::S3::Bucket"
+      Properties: 
+        BucketName: "${{self:provider.environment.S3_BUCKET}}"
+
+    LogGroup:
+      Type: "AWS::Logs::LogGroup"
+      Properties: 
+        LogGroupName: "/kinesis/${{self:service}}/${{self:provider.stage}}"
+
+    S3LogStream:
+      Type: "AWS::Logs::LogStream"
+      Properties: 
+        LogGroupName: 
+          Ref: LogGroup
+        LogStreamName: "s3"
+
+    ESLogStream:
+      Type: "AWS::Logs::LogStream"
+      Properties: 
+        LogGroupName: 
+          Ref: LogGroup
+        LogStreamName: "es"
+
+    EventStream:
+      Type: AWS::Kinesis::Stream
+      Properties:
+        Name: ${{self:provider.environment.KINESIS_STREAM}}
+        ShardCount: 1
+
+    DeliveryStreamRole:
+      Type: "AWS::IAM::Role"
+      Properties: 
+        RoleName:  "${{self:provider.environment.KINESIS_FIREHOSE}}-role"
+        AssumeRolePolicyDocument: 
+          Version: "2012-10-17"
+          Statement: 
+          - Effect: "Allow"
+            Principal: 
+                Service: 
+                    - "firehose.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+          - "arn:aws:iam::aws:policy/AmazonESFullAccess" 
+          - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess" 
+          - "arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess"
+
+    DeliveryStream:
+        Type: "AWS::KinesisFirehose::DeliveryStream"
+        DependsOn: SearchCluster
+        Properties:
+          DeliveryStreamName: "${{self:provider.environment.KINESIS_FIREHOSE}}"
+          DeliveryStreamType: KinesisStreamAsSource
+          KinesisStreamSourceConfiguration: 
+              KinesisStreamARN: 
+                'Fn::GetAtt':
+                  - EventStream
+                  - Arn
+              RoleARN: 
+                'Fn::GetAtt':
+                  - DeliveryStreamRole
+                  - Arn
+          ElasticsearchDestinationConfiguration:
+            CloudWatchLoggingOptions:
+              Enabled: true
+              LogGroupName: 
+                Ref: LogGroup
+              LogStreamName: "es"
+            BufferingHints:
+              IntervalInSeconds: 60
+              SizeInMBs: 5
+            DomainARN: 
+              Fn::GetAtt:  [SearchCluster,DomainArn]
+            IndexName: ${{self:service}}
+            IndexRotationPeriod: "OneDay"
+            RetryOptions:
+              DurationInSeconds: 60
+            TypeName: "tracker"
+            RoleARN: 
+              Fn::GetAtt: [DeliveryStreamRole, Arn]  
+            S3BackupMode: "AllDocuments"
+            S3Configuration:
+              BucketARN: 
+                Fn::GetAtt: [FirehoseBackupBucket, Arn]
+              RoleARN: 
+                Fn::GetAtt: [DeliveryStreamRole, Arn]  
+              CloudWatchLoggingOptions: 
+                Enabled: true
+                LogGroupName: 
+                  Ref: LogGroup
+                LogStreamName: "s3"
+              BufferingHints:
+                  IntervalInSeconds: 300
+                  SizeInMBs: 25
+              CompressionFormat: "UNCOMPRESSED"
+              Prefix: ${{self:provider.stage}}/${{self:service}}

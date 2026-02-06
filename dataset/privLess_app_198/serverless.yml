@@ -1,0 +1,115 @@
+service: abu-upload
+
+projectDir: ../../
+
+package:
+  individually: true
+  excludeDevDependencies: true
+
+plugins:
+  - serverless-bundle
+  - serverless-s3-local
+  - serverless-offline
+
+custom:
+  BucketName: ${file(../../config/${self:provider.stage}.yml):UPLOAD_BUCKET, 'local'}
+  BucketResizePrefix: ${file(../../config/${self:provider.stage}.yml):UPLOAD_PREFIX, 'uploads'}
+  bundle:
+    packager: yarn
+    packagerOptions:
+      scripts:
+        - rm -rf node_modules/sharp && npm install --arch=x64 --platform=linux sharp
+  serverless-offline:
+    httpPort: 8065
+    lambdaPort: 8067
+    noPrependStageInUrl: true
+    useChildProcesses: true
+  s3:
+    port: 8064
+    directory: ./.s3-local
+    cors: ./s3-cors.xml
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 512
+  timeout: 30
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  profile: ${file(../../config/${self:provider.stage}.yml):PROFILE}
+  lambdaHashingVersion: 20201221
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "s3:*"
+          Resource:
+            - "arn:aws:s3:::${self:custom.BucketName}"
+            - "arn:aws:s3:::${self:custom.BucketName}/*"
+  cloudFront:
+    cachePolicies:
+      uploadCachePolicy:
+        MinTTL: 0
+        MaxTTL: 31536000
+        DefaultTTL: 86400
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: "none"
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: "none"
+          QueryStringsConfig:
+            QueryStringBehavior: "all"
+
+functions:
+  origin-request:
+    handler: src/origin-request.handler
+    events:
+      - cloudFront:
+          eventType: origin-request
+          origin:
+            DomainName: ${self:custom.BucketName}.s3-website-${self:provider.region}.amazonaws.com
+            Id: S3-Website-${self:custom.BucketName}.s3-website-${self:provider.region}.amazonaws.com
+            CustomOriginConfig:
+              HTTPPort: "80"
+              HTTPSPort: "443"
+              OriginProtocolPolicy: http-only
+            OriginCustomHeaders:
+              - HeaderName: X-Bucket-Name
+                HeaderValue: ${self:custom.BucketName}
+          cachePolicy:
+            name: uploadCachePolicy
+
+resources:
+  Resources:
+    s3Bucket:
+      Type: "AWS::S3::Bucket"
+      Properties:
+        BucketName: ${self:custom.BucketName}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - PUT
+              MaxAge: 3000
+    s3Policy:
+      Type: "AWS::S3::BucketPolicy"
+      Properties:
+        Bucket:
+          Ref: s3Bucket
+        PolicyDocument:
+          Statement:
+            - Sid: ReadAccess
+              Action:
+                - "s3:GetObject"
+              Effect: "Allow"
+              Resource: "arn:aws:s3:::${self:custom.BucketName}/*"
+              Principal: "*"

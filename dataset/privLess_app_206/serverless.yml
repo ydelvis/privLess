@@ -1,0 +1,107 @@
+service: serviceName
+# app: app
+# org: org
+
+custom:
+  aws_profile: "awsprofile"
+  environment: ${file(env.yml):${self:provider.stage}, file(env.yml):offline}
+  warmup:
+    enabled: true
+    prewarm: true
+    name: ${self:service}-${self:provider.stage}-lambda-warmer
+    concurrency: 1
+
+# Add the serverless-webpack plugin
+plugins:
+  - serverless-offline
+  - serverless-plugin-warmup
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  stage: ${opt:stage, 'offline'}
+  profile: ${self:custom.aws_profile} # aws credentials profile to use
+  region: ${opt:region, 'eu-central-1'}
+  lambdaHashingVersion: 20201221
+  apiGateway:
+    shouldStartNameWithService: true
+    minimumCompressionSize: 1024
+  tracing:
+    apiGateway: true
+    lambda: true
+  environment:
+    REDIS_HOST: ${self:custom.environment.REDIS_HOST}
+    REDIS_PASSWORD: ${self:custom.environment.REDIS_PASSWORD}
+    REDIS_PORT: ${self:custom.environment.REDIS_PORT}
+    MONGO_URL: ${self:custom.environment.MONGO_URL}
+    ENGINE_API_KEY: ${self:custom.environment.ENGINE_API_KEY}
+    BASE_URL: ${self:custom.environment.BASE_URL}
+    NODE_ENV: PRODUCTION
+    AWS_STAGE: ${self:provider.stage}
+    GOOGLE_APPLICATIONS_CREDENTIALS: "./firebase-adminsdk.json"
+    APOLLO_KEY: ${self:custom.environment.APOLLO_KEY}
+    APOLLO_GRAPH_VARIANT: ${self:custom.environment.APOLLO_GRAPH_VARIANT}
+    APOLLO_SCHEMA_REPORTING: ${self:custom.environment.APOLLO_SCHEMA_REPORTING}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - lambda:*
+          Resource: "*"
+
+        - Effect: "Allow"
+          Action:
+            - "ses:SendEmail"
+            - "ses:SendRawEmail"
+          Resource:
+            - "*"
+
+        - Effect: "Allow"
+          Action:
+            - s3:*
+          Resource: "*"
+
+        - Effect: "Allow"
+          Action:
+            - "sqs:*"
+          Resource: "*"
+
+package: # Optional deployment packaging configuration
+  # include: # Specify the directories and files which should be included in the deployment package
+  # - src/**
+  # - handler.js
+  exclude: # Specify the directories and files which should be excluded in the deployment package
+    - .git/**
+    - apollo.config.js
+    - commitlint.config.js
+    - env.yml
+    - .env
+    - package-lock.json
+    - package.json
+    - yarn.lock
+    - README.md
+    - scripts/**
+    - .vscode/**
+    - .DS_Store
+  excludeDevDependencies: true
+
+functions:
+  graphqlHandler:
+    handler: api/graphqlHandler.graphqlHandler
+    events:
+      - http:
+          path: playground
+          method: get
+          cors: true
+      - http:
+          path: graphql
+          method: get
+          cors: true
+      - http:
+          path: graphql
+          method: post
+          cors: true
+      # - cloudFront:
+      #     eventType: origin-request
+      #     origin: https://app.acme.com

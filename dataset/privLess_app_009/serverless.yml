@@ -1,0 +1,44 @@
+service: serverless-api-example
+
+frameworkVersion: '>=1.28.0 <2.0.0'
+
+provider:
+  region: "eu-west-1"
+  name: aws
+  runtime: go1.x
+  tracing:
+    apiGateway: true
+    lambda: true
+  iamRoleStatements:
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "xray:*"
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "dynamodb:*"
+
+custom:
+  - serverless-jetpack
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./bin/**
+
+functions:
+  users:
+    handler: bin/users
+    environment:
+      TABLE_NAME: "example-users"
+    events:
+      - http:
+          path: /users
+          method: ANY
+          cors: true
+      - http:
+          path: /users/{id}
+          method: ANY
+          cors: true

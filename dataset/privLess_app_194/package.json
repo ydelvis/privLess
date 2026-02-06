@@ -1,0 +1,53 @@
+{
+  "name": "monitoring-tester-service",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Monitoring Service",
+  "scripts": {
+    "lint": "tslint 'src/**/*.ts'",
+    "test": "jest --verbose",
+    "test:watch": "jest --watch",
+    "test:ci": "JEST_JUNIT_OUTPUT_DIR=../../reports/junit JEST_JUNIT_OUTPUT_NAME=${npm_package_name}-test-results.xml yarn test --runInBand --ci",
+    "test:e2e": "JEST_JUNIT_OUTPUT_DIR=../../reports/junit JEST_JUNIT_OUTPUT_NAME=${npm_package_name}-e2e-test-results.xml yarn test --runInBand --ci --config=jest.config.e2e.js",
+    "coverage": "yarn test --coverage",
+    "deploy": "serverless deploy",
+    "remove": "serverless remove",
+    "prettier": "prettier --write 'src/**/*.ts' 'e2e/**/*.ts' 'scripts/*.js'",
+    "prettier:ci": "prettier --list-different 'src/**/*.ts' 'e2e/**/*.ts' 'scripts/*.js'",
+    "print:name": "echo ${npm_package_name}"
+  },
+  "dependencies": {
+    "aws-amplify": "^3.0.18",
+    "aws-sdk": "^2.817.0",
+    "axios": "^0.30.0"
+  },
+  "devDependencies": {
+    "@anttiviljami/serverless-stack-output": "^0.3.1",
+    "@types/aws-lambda": "^8.10.68",
+    "@types/chai": "^4.2.12",
+    "@types/jest": "^26.0.13",
+    "@types/mockdate": "^2.0.0",
+    "@types/node": "^16.0.0",
+    "aws-testing-library": "^2.0.0",
+    "chai": "^4.2.0",
+    "dotenv": "^16.0.0",
+    "jest": "^26.6.3",
+    "mockdate": "3.0.5",
+    "monitoring-appsync-service": "file:./../monitoring-appsync-service",
+    "monitoring-common": "file:./../monitoring-common",
+    "serverless-iam-roles-per-function": "^3.0.0",
+    "serverless-plugin-tracing": "^2.0.0",
+    "serverless-pseudo-parameters": "^2.5.0",
+    "serverless-scriptable-plugin": "1.3.1",
+    "serverless-step-functions": "^3.0.0",
+    "serverless-webpack": "^5.2.0",
+    "ts-jest": "^26.1.1",
+    "ts-loader": "^9.0.0",
+    "tslint": "^6.0.0",
+    "tslint-config-prettier": "^1.18.0",
+    "typescript": "^4.0.0",
+    "webpack": "^5.0.0"
+  },
+  "author": "Erez Rokah",
+  "license": "MIT"
+}

@@ -1,0 +1,105 @@
+service: websocket-example
+
+plugins:
+  - serverless-plugin-common-excludes
+  - serverless-plugin-include-dependencies
+  - '@anttiviljami/serverless-stack-output'
+
+custom:
+  output:
+    file: ./client/data.json
+  stage: ${opt:stage, 'dev'}
+
+provider:
+  name: aws
+
+  # If you use a lower runtime (e.g. nodejs8.10), you have to bundle your own
+  # 'aws-sdk', as ApiGatewayManagementApi was not introduced until
+  # aws-sdk@2.379.0. See https://github.com/aws/aws-sdk-js/issues/2520#issuecomment-476723105
+  # for details.
+  runtime: nodejs10.x
+
+  environment:
+    APIG_ENDPOINT:
+      Fn::Join:
+        - ''
+        - - Ref: WebsocketsApi
+          - .execute-api.
+          - Ref: AWS::Region
+          - .amazonaws.com/
+          - ${self:custom.stage}
+    CONNECTIONS_TABLE:
+      Ref: ConnectionsTable
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DeleteItem
+        - dynamodb:GetItem
+        - dynamodb:Scan
+        - dynamodb:PutItem
+      Resource:
+        Fn::GetAtt:
+          - ConnectionsTable
+          - Arn
+
+functions:
+  authorizer:
+    handler: src/authorizer.handler
+
+  broadcast:
+    handler: src/broadcast.handler
+
+  # See https://serverless.com/framework/docs/providers/aws/events/websocket/
+  # for full details
+  websocket:
+    handler: src/websocket.handler
+    events:
+      - websocket:
+          # Handles new connection requests
+          route: $connect
+          # Only the '$connect' route supports an authorizer. The other routes
+          # are secured via the connection ID and therefore it should be handled
+          # like a session ID.
+          authorizer:
+            name: authorizer
+            # See https://serverless.com/framework/docs/providers/aws/events/websocket#using-authorizers
+            # and https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-apigatewayv2-authorizer.html#cfn-apigatewayv2-authorizer-identitysource
+            # for more details on identitySource.
+            # See https://docs.aws.amazon.com/apigateway/latest/developerguide/request-response-data-mappings.html
+            # for more details on API Gateway mappings.
+            identitySource:
+              - 'route.request.header.X-Forwarded-Proto'
+
+      - websocket:
+          # Route messages here if '$request.body.action' is 'routeA'.
+          # You can adjust which property to use for routing by adjusting
+          # 'websocketsApiRouteSelectionExpression'.
+          route: routeA
+
+      - websocket:
+          # Handles all unrouted messages
+          route: $default
+
+      - websocket:
+          # Handles disconnect messages
+          route: $disconnect
+
+resources:
+  Resources:
+    ConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        SSESpecification:
+          SSEEnabled: true
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+

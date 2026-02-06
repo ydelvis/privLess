@@ -1,0 +1,24 @@
+{
+	"name": "serverless-media-portal",
+	"version": "1.0.0",
+	"description": "",
+	"main": "handler.js",
+	"dependencies": {},
+	"devDependencies": {
+		"aws-sdk": "^2.1077.0",
+		"eslint": "^7.32.0",
+		"eslint-config-airbnb-base": "^14.2.1",
+		"eslint-plugin-import": "^2.25.4",
+		"jest": "^27.5.1",
+		"serverless-export-env": "^2.1.0",
+		"serverless-offline": "^8.5.0",
+		"serverless-plugin-scripts": "^1.0.2"
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"offline": "serverless offline --noCache --httpPort 3001",
+		"deploy": "serverless deploy"
+	},
+	"author": "",
+	"license": "ISC"
+}

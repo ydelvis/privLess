@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: "localstack"
+    image: localstack/localstack:3.2
+    ports:
+      - "4566:4566"
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SERVICES=s3
+
+  test:
+    build: .
+    command: npm run test
+    volumes:
+      - .:/src
+    depends_on:
+      - localstack
+    environment:
+      LOCALSTACK_HOST: localstack
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test

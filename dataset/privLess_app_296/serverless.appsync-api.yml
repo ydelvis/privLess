@@ -1,0 +1,367 @@
+name: twitter
+schema: schema.api.graphql
+caching: ${self:custom.appSyncCaching}
+authenticationType: AMAZON_COGNITO_USER_POOLS
+userPoolConfig:
+  awsRegion: eu-west-1
+  defaultAction: ALLOW
+  userPoolId: !Ref CognitoUserPool
+logConfig:
+  loggingRoleArn: !GetAtt AppSyncLoggingServiceRole.Arn
+  level: ${self:custom.appSyncLogLevel}
+  excludeVerboseContent: ${self:custom.appSyncLogExcludeVerboseContent}
+additionalAuthenticationProviders:
+  - authenticationType: AWS_IAM
+mappingTemplatesLocation: mapping-templates
+mappingTemplates:
+  - type: Subscription
+    field: onNotified
+    dataSource: none
+
+  - type: Query
+    field: getMyProfile
+    dataSource: usersTable
+    # request: Query.getMyProfile.request.vtl (DEFAULT)
+    # response: Query.getMyProfile.response.vtl (DEFAULT)
+  - type: Query
+    field: getProfile
+    dataSource: usersTable
+    caching:
+      keys:
+        - $context.arguments.screenName
+      ttl: 300 # 5 minutes in seconds
+  - type: Query
+    field: getImageUploadUrl
+    dataSource: getImageUploadUrlFunction
+    request: false
+    response: false
+  - type: Mutation
+    field: editMyProfile
+    dataSource: usersTable
+  - type: Mutation
+    field: tweet
+    dataSource: tweetFunction
+    request: false
+    response: false
+  - type: Query
+    field: getTweets
+    dataSource: tweetsTable
+  - type: Query
+    field: getMyTimeline
+    dataSource: timelinesTable
+  - type: Mutation
+    field: like
+    dataSource: likeMutation
+  - type: Mutation
+    field: unlike
+    dataSource: unlikeMutation
+  - type: Query
+    field: getLikes
+    dataSource: likesTable
+  - type: Query
+    field: getFollowers
+    kind: PIPELINE
+    functions:
+      - getFollowers
+      - hydrateFollowers
+    request: simplePipeline.request.vtl
+    response: simplePipeline.response.vtl
+  - type: Query
+    field: getFollowing
+    kind: PIPELINE
+    functions:
+      - getFollowing
+      - hydrateFollowing
+    request: simplePipeline.request.vtl
+    response: simplePipeline.response.vtl
+  - type: Query
+    field: search
+    dataSource: searchFunction
+    request: false
+    response: false
+  - type: Query
+    field: getHashTag
+    dataSource: getHashTagFunction
+    request: false
+    response: false
+  - type: Query
+    field: listConversations
+    dataSource: conversationsTable
+  - type: Query
+    field: getDirectMessages
+    dataSource: directMessagesTable
+
+  - type: Mutation
+    field: retweet
+    dataSource: retweetFunction
+    request: false
+    response: false
+  - type: Mutation
+    field: unretweet
+    dataSource: unretweetFunction
+    request: false
+    response: false
+  - type: Mutation
+    field: reply
+    dataSource: replyFunction
+    request: false
+    response: false
+  - type: Mutation
+    field: follow
+    dataSource: followMutation
+  - type: Mutation
+    field: follow
+    dataSource: followMutation
+  - type: Mutation
+    field: unfollow
+    dataSource: unfollowMutation
+  - type: Mutation
+    field: notifyRetweeted
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyLiked
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyDMed
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyMentioned
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyReplied
+    dataSource: notificationsTable
+  - type: Mutation
+    field: sendDirectMessage
+    dataSource: sendDirectMessageFunction
+    request: false
+    response: false
+  - type: Query
+    field: getAnalyticsConfig
+    dataSource: none
+
+  # NESTED FIELDS
+  - type: Tweet
+    field: profile
+    dataSource: getTweetCreatorFunction
+    request: Tweet.profile.batchInvoke.request.vtl
+    response: Tweet.profile.batchInvoke.response.vtl
+    caching:
+      keys:
+        - $context.identity.username
+        - $context.source.creator
+      ttl: 300 # 5 minutes in seconds
+  - type: Retweet
+    field: profile
+    dataSource: getTweetCreatorFunction
+    request: Tweet.profile.batchInvoke.request.vtl
+    response: Tweet.profile.batchInvoke.response.vtl
+    caching:
+      keys:
+        - $context.identity.username
+        - $context.source.creator
+      ttl: 300 # 5 minutes in seconds
+  - type: Reply
+    field: profile
+    dataSource: getTweetCreatorFunction
+    request: Tweet.profile.batchInvoke.request.vtl
+    response: Tweet.profile.batchInvoke.response.vtl
+    caching:
+      keys:
+        - $context.identity.username
+        - $context.source.creator
+      ttl: 300 # 5 minutes in seconds
+  - type: Tweet
+    field: liked
+    dataSource: likesTable
+  - type: Reply
+    field: liked
+    dataSource: likesTable
+    request: Tweet.liked.request.vtl
+    response: Tweet.liked.response.vtl
+  - type: Tweet
+    field: retweeted
+    dataSource: retweetsTable
+  - type: Reply
+    field: retweeted
+    dataSource: retweetsTable
+    request: Tweet.retweeted.request.vtl
+    response: Tweet.retweeted.response.vtl
+  - type: Retweet
+    field: retweetOf
+    dataSource: tweetsTable
+  - type: Reply
+    field: inReplyToTweet
+    dataSource: tweetsTable
+  - type: Reply
+    field: inReplyToUsers
+    dataSource: usersTable
+    caching:
+      keys:
+        - $context.identity.username
+        - $context.source.inReplyToUserIds
+      ttl: 300 # 5 minutes in seconds
+  - type: UnhydratedTweetsPage
+    field: tweets
+    dataSource: tweetsTable
+  - type: MyProfile
+    field: tweets
+    dataSource: tweetsTable
+  - type: OtherProfile
+    field: tweets
+    dataSource: tweetsTable
+    request: MyProfile.tweets.request.vtl
+    response: MyProfile.tweets.response.vtl
+  - type: OtherProfile
+    field: following
+    dataSource: relationshipsTable
+  - type: OtherProfile
+    field: followedBy
+    dataSource: relationshipsTable
+  - type: Conversation
+    field: otherUser
+    dataSource: usersTable
+  - type: Message
+    field: from
+    dataSource: usersTable
+
+functionConfigurations:
+  - name: getFollowers
+    dataSource: relationshipsTable
+  - name: hydrateFollowers
+    dataSource: usersTable
+  - name: getFollowing
+    dataSource: relationshipsTable
+  - name: hydrateFollowing
+    dataSource: usersTable
+
+dataSources:
+  - type: NONE
+    name: none
+  - type: AMAZON_DYNAMODB
+    name: usersTable
+    config:
+      tableName: !Ref UsersTable
+  - type: AMAZON_DYNAMODB
+    name: tweetsTable
+    config:
+      tableName: !Ref TweetsTable
+  - type: AMAZON_DYNAMODB
+    name: timelinesTable
+    config:
+      tableName: !Ref TimelinesTable
+  - type: AMAZON_DYNAMODB
+    name: likesTable
+    config:
+      tableName: !Ref LikesTable
+  - type: AMAZON_DYNAMODB
+    name: retweetsTable
+    config:
+      tableName: !Ref RetweetsTable
+  - type: AMAZON_DYNAMODB
+    name: relationshipsTable
+    config:
+      tableName: !Ref RelationshipsTable
+  - type: AMAZON_DYNAMODB
+    name: notificationsTable
+    config:
+      tableName: !Ref NotificationsTable
+  - type: AMAZON_DYNAMODB
+    name: conversationsTable
+    config:
+      tableName: !Ref ConversationsTable
+  - type: AMAZON_DYNAMODB
+    name: directMessagesTable
+    config:
+      tableName: !Ref DirectMessagesTable
+  - type: AMAZON_DYNAMODB
+    name: likeMutation
+    config:
+      tableName: !Ref LikesTable
+      iamRoleStatements:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource: !GetAtt LikesTable.Arn
+        - Effect: Allow
+          Action: dynamodb:UpdateItem
+          Resource:
+            - !GetAtt UsersTable.Arn
+            - !GetAtt TweetsTable.Arn
+  - type: AMAZON_DYNAMODB
+    name: unlikeMutation
+    config:
+      tableName: !Ref LikesTable
+      iamRoleStatements:
+        - Effect: Allow
+          Action: dynamodb:DeleteItem
+          Resource: !GetAtt LikesTable.Arn
+        - Effect: Allow
+          Action: dynamodb:UpdateItem
+          Resource:
+            - !GetAtt UsersTable.Arn
+            - !GetAtt TweetsTable.Arn
+  - type: AMAZON_DYNAMODB
+    name: followMutation
+    config:
+      tableName: !Ref RelationshipsTable
+      iamRoleStatements:
+        - Effect: Allow
+          Action: dynamodb:PutItem
+          Resource: !GetAtt RelationshipsTable.Arn
+        - Effect: Allow
+          Action: dynamodb:UpdateItem
+          Resource: !GetAtt UsersTable.Arn
+  - type: AMAZON_DYNAMODB
+    name: unfollowMutation
+    config:
+      tableName: !Ref RelationshipsTable
+      iamRoleStatements:
+        - Effect: Allow
+          Action: dynamodb:DeleteItem
+          Resource: !GetAtt RelationshipsTable.Arn
+        - Effect: Allow
+          Action: dynamodb:UpdateItem
+          Resource: !GetAtt UsersTable.Arn
+  - type: AWS_LAMBDA
+    name: getImageUploadUrlFunction
+    config:
+      functionName: getImageUploadUrl
+  - type: AWS_LAMBDA
+    name: tweetFunction
+    config:
+      functionName: tweet
+  - type: AWS_LAMBDA
+    name: retweetFunction
+    config:
+      functionName: retweet
+  - type: AWS_LAMBDA
+    name: unretweetFunction
+    config:
+      functionName: unretweet
+  - type: AWS_LAMBDA
+    name: replyFunction
+    config:
+      functionName: reply
+  - type: AWS_LAMBDA
+    name: searchFunction
+    config:
+      functionName: search
+  - type: AWS_LAMBDA
+    name: getHashTagFunction
+    config:
+      functionName: getHashTag
+  - type: AWS_LAMBDA
+    name: sendDirectMessageFunction
+    config:
+      functionName: sendDirectMessage
+  - type: AWS_LAMBDA
+    name: getTweetCreatorFunction
+    config:
+      functionName: getTweetCreator
+
+substitutions:
+  TweetsTable: !Ref TweetsTable
+  LikesTable: !Ref LikesTable
+  UsersTable: !Ref UsersTable
+  RelationshipsTable: !Ref RelationshipsTable
+  FirehoseStreamName: !Ref FirehoseStream
+  IdentityPoolId: !Ref IdentityPool

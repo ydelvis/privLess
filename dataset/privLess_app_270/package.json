@@ -1,0 +1,22 @@
+{
+  "name": "watermark-demo",
+  "version": "0.0.1",
+  "description": "Shotstack video watermark demo and Serverless",
+  "private": true,
+  "scripts": {
+    "deploy": "sls deploy",
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.800.0",
+    "axios": "^0.21.0",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "joi": "^17.3.0",
+    "uniqid": "^5.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
+  }
+}

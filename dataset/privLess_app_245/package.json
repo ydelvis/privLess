@@ -1,0 +1,13 @@
+{
+    "name": "lamdba-contact-form",
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/cowholio4/lambda-contact-form.git"
+    },
+    "dependencies": {
+	"aws-sdk" : "^2.60.0",
+        "nodemailer": "^4.0.1",
+        "nodemailer-ses-transport": "^1.5.1",
+        "qs" : "^6.4.0"
+    }
+}

@@ -1,0 +1,179 @@
+service: ${self:provider.environment.FAULTLINE_SERVICE_NAME}
+
+frameworkVersion: ">=3.0.0"
+
+useDotenv: true
+
+provider:
+  name: aws
+  environment:
+    FAULTLINE_STAGE: ${env:FAULTLINE_STAGE, file(./config.yml):stage, 'dev'}
+    FAULTLINE_SERVICE_NAME: ${env:FAULTLINE_SERVICE_NAME, file(./config.yml):serviceName, 'faultline'}
+    FAULTLINE_REGION: ${env:FAULTLINE_REGION, file(./config.yml):region, 'us-east-1'}
+    FAULTLINE_S3_BUCKET_NAME: ${env:FAULTLINE_S3_BUCKET_NAME, file(./config.yml):s3BucketName}
+    FAULTLINE_DYNAMODB_TABLE_PREFIX: ${env:FAULTLINE_DYNAMODB_TABLE_PREFIX, file(./config.yml):dynamodbTablePrefix, 'faultline'}
+    FAULTLINE_DYNAMODB_TABLE_SUFFIX: ${env:FAULTLINE_DYNAMODB_TABLE_SUFFIX, file(./config.yml):dynamodbTableSuffix, "-${self:provider.environment.FAULTLINE_STAGE}"}
+    FAULTLINE_DYNAMODB_READ_CAPACITY_UNITS: ${env:FAULTLINE_DYNAMODB_READ_CAPACITY_UNITS, file(./config.yml):dynamodbReadCapacityUnits, '1'}
+    FAULTLINE_DYNAMODB_WRITE_CAPACITY_UNITS: ${env:FAULTLINE_DYNAMODB_WRITE_CAPACITY_UNITS, file(./config.yml):dynamodbWriteCapacityUnits, '1'}
+    FAULTLINE_TIMEUNIT: ${env:FAULTLINE_TIMEUNIT, file(./config.yml):timeunit, 'minute'}
+    FAULTLINE_MASTER_API_KEY: ${env:FAULTLINE_MASTER_API_KEY, file(./config.yml):masterApiKey}
+    FAULTLINE_CLIENT_API_KEY: ${env:FAULTLINE_CLIENT_API_KEY, file(./config.yml):clientApiKey}
+    FAULTLINE_ERROR_DATA_RETENTION_IN_DAYS: ${env:FAULTLINE_ERROR_DATA_RETENTION_IN_DAYS, file(./config.yml):errorDataRetentionInDays, '-1'}
+    FAULTLINE_LOG_RETENTION_IN_DAYS: ${env:FAULTLINE_LOG_RETENTION_IN_DAYS, file(./config.yml):logRetentionInDays, '180'}
+    FAULTLINE_USE_KMS: ${env:FAULTLINE_USE_KMS, file(./config.yml):useKms, '0'}
+    FAULTLINE_KMS_KEY_ALIAS: ${env:FAULTLINE_KMS_KEY_ALIAS, file(./config.yml):kmsKeyAlias, 'faultline'}
+    FAULTLINE_VERSION: ${file(./package.json):version}
+  runtime: nodejs16.x
+  stage: ${self:provider.environment.FAULTLINE_STAGE}
+  region: ${self:provider.environment.FAULTLINE_REGION}
+  timeout: 10
+## Uncomment this section, if you want to specify deployment bucket.
+#  deploymentBucket:
+#    name: ${env:FAULTLINE_DEPLOYMENT_BUCKET, file(./config.yml):deploymentBucket}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Resource:
+            - { "Fn::Join" : ["", ["arn:aws:dynamodb:", "${self:provider.environment.FAULTLINE_REGION}", ":*:*" ] ] }
+          Action:
+            - "dynamodb:*"
+        - Effect: Allow
+          Action:
+            - "s3:ListBucket"
+            - "s3:GetObject"
+            - "s3:PutObject"
+            - "s3:DeleteObject"
+          Resource:
+            - { "Fn::Join" : ["", ["arn:aws:s3:::", "${self:provider.environment.FAULTLINE_S3_BUCKET_NAME}"] ] }
+            - Fn::Join:
+              - ""
+              - - "arn:aws:s3:::"
+                - ${self:provider.environment.FAULTLINE_S3_BUCKET_NAME}
+                - "/*"
+        - Effect: Allow
+          Action:
+            - "lambda:InvokeFunction"
+            - "lambda:InvokeAsync"
+          Resource:
+            - "arn:aws:lambda:${self:provider.environment.FAULTLINE_REGION}:*:function:${self:provider.environment.FAULTLINE_SERVICE_NAME}-${self:provider.stage}-callNotifications"
+        - Effect: Allow
+          Action:
+            - "kms:Encrypt"
+            - "kms:Decrypt"
+            - "kms:ListAliases"
+          Resource:
+            - "*"
+
+package:
+  patterns:
+    - '!.env*'
+    - '!.github/**'
+    - '!.nyc_output/**'
+    - '!coverage/**'
+    - '!docs/**'
+    - '!src/**/__tests__/*.js'
+
+plugins:
+  - faultline-env-checker
+  - faultline-resources
+  - serverless-prune-plugin
+
+functions:
+  projectsList:
+    handler: src/handlers/projectsList.handler
+    events:
+      - http:
+          path: projects
+          method: get
+          cors: true
+          integration: lambda-proxy
+  projectsDelete:
+    handler: src/handlers/projectsDelete.handler
+    timeout: 30
+    events:
+      - http:
+          path: projects/{project}
+          method: delete
+          cors: true
+          integration: lambda-proxy
+  errorsPost:
+    handler: src/handlers/errorsPost.handler
+    events:
+      - http:
+          path: projects/{project}/errors
+          method: post
+          integration: lambda-proxy
+  errorsList:
+    handler: src/handlers/errorsList.handler
+    events:
+      - http:
+          path: projects/{project}/errors
+          method: get
+          cors: true
+          integration: lambda-proxy
+  errorsGet:
+    handler: src/handlers/errorsGet.handler
+    events:
+      - http:
+          path: projects/{project}/errors/{message}
+          method: get
+          cors: true
+          integration: lambda-proxy
+  errorsPatch:
+    handler: src/handlers/errorsPatch.handler
+    events:
+      - http:
+          path: projects/{project}/errors/{message}
+          method: patch
+          cors: true
+          integration: lambda-proxy
+  errorsDelete:
+    handler: src/handlers/errorsDelete.handler
+    timeout: 30
+    events:
+      - http:
+          path: projects/{project}/errors/{message}
+          method: delete
+          cors: true
+          integration: lambda-proxy
+  occurrencesList:
+    handler: src/handlers/occurrencesList.handler
+    events:
+      - http:
+          path: projects/{project}/errors/{message}/occurrences
+          method: get
+          cors: true
+          integration: lambda-proxy
+  occurrencesGet:
+    handler: src/handlers/occurrencesGet.handler
+    events:
+      - http:
+          path: projects/{project}/errors/{message}/occurrences/{reversedUnixtime}
+          method: get
+          cors: true
+          integration: lambda-proxy
+  callNotifications:
+    handler: src/handlers/callNotifications.handler
+    timeout: 30
+  deleteExpiredErrors:
+    handler: src/handlers/deleteExpiredErrors.handler
+    events:
+      - schedule:
+          rate: cron(0 0 * * ? *)
+          enabled: false # ${env:FAULTLINE_ERROR_DATA_RETENTION_IN_DAYS, file(./config.yml):errorDataRetentionInDays, '-1'}
+  encrypt:
+    handler: src/handlers/encrypt.handler
+    events:
+      - http:
+          path: encrypt
+          method: post
+          integration: lambda-proxy
+  info:
+    handler: src/handlers/info.handler
+    events:
+      - http:
+          path: info
+          method: get
+          cors: true
+          integration: lambda-proxy

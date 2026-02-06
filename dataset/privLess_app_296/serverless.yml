@@ -1,0 +1,422 @@
+service: twitter
+frameworkVersion: "3"
+
+useDotenv: true
+
+params:
+  dev:
+    appSyncCaching: false
+    appSyncLogLevel: ALL
+    appSyncLogExcludeVerboseContent: false
+  prod:
+    appSyncCaching:
+      behavior: PER_RESOLVER_CACHING
+      ttl: 3600
+      type: LARGE
+    appSyncLogLevel: ERROR
+    appSyncLogExcludeVerboseContent: true
+
+plugins:
+  - serverless-appsync-plugin
+  - serverless-iam-roles-per-function
+  - serverless-export-env
+  - serverless-layers
+  - serverless-plugin-log-retention
+  - serverless-plugin-ifelse
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: eu-west-1
+  environment:
+    STAGE: ${sls:stage}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+package:
+  exclude:
+    - package-lock.json
+    - package.json
+
+custom:
+  region: ${opt:region, self:provider.region}
+  export-env:
+    overwrite: true
+  appSync:
+    - ${file(serverless.appsync-api.yml)}
+  serverless-layers:
+    layersDeploymentBucket: ${ssm:/twitterappsync/${sls:stage}/layer-deployment-bucket}
+  logRetentionInDays: 1
+  appSyncCaching: ${param:appSyncCaching}
+  appSyncLogLevel: ${param:appSyncLogLevel}
+  appSyncLogExcludeVerboseContent: ${param:appSyncLogExcludeVerboseContent}
+  serverlessIfElse:
+    - If: '"${sls:stage}" == "prod"' # don't do anything
+      ElseExclude:
+        - functions.setResolverLogLevelToAll
+        - functions.setResolverLogLevelToError
+
+functions:
+  confirmUserSignup:
+    handler: functions/confirm-user-signup.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource: !GetAtt UsersTable.Arn
+
+  getImageUploadUrl:
+    handler: functions/get-upload-url.handler
+    environment:
+      BUCKET_NAME: !Ref AssetsBucket
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:PutObjectAcl
+        Resource: !Sub ${AssetsBucket.Arn}/*
+
+  tweet:
+    handler: functions/tweet.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+      TWEETS_TABLE: !Ref TweetsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource: !GetAtt UsersTable.Arn
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt TimelinesTable.Arn
+
+  retweet:
+    handler: functions/retweet.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+      TWEETS_TABLE: !Ref TweetsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+      RETWEETS_TABLE: !Ref RetweetsTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt UsersTable.Arn
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt TimelinesTable.Arn
+          - !GetAtt RetweetsTable.Arn
+
+  unretweet:
+    handler: functions/unretweet.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+      TWEETS_TABLE: !Ref TweetsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+      RETWEETS_TABLE: !Ref RetweetsTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+      - Effect: Allow
+        Action: dynamodb:Query
+        Resource: !Sub "${TweetsTable.Arn}/index/retweetsByCreator"
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt UsersTable.Arn
+      - Effect: Allow
+        Action: dynamodb:DeleteItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt TimelinesTable.Arn
+          - !GetAtt RetweetsTable.Arn
+
+  reply:
+    handler: functions/reply.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+      TWEETS_TABLE: !Ref TweetsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt UsersTable.Arn
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource:
+          - !GetAtt TweetsTable.Arn
+          - !GetAtt TimelinesTable.Arn
+
+  distributeTweets:
+    handler: functions/distribute-tweets.handler
+    environment:
+      RELATIONSHIPS_TABLE: !Ref RelationshipsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt TweetsTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+          - dynamodb:BatchWriteItem
+        Resource: !GetAtt TimelinesTable.Arn
+      - Effect: Allow
+        Action: dynamodb:Query
+        Resource: !Sub "${RelationshipsTable.Arn}/index/byOtherUser"
+
+  distributeTweetsToFollower:
+    handler: functions/distribute-tweets-to-follower.handler
+    environment:
+      TWEETS_TABLE: !Ref TweetsTable
+      TIMELINES_TABLE: !Ref TimelinesTable
+      MAX_TWEETS: "100"
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt RelationshipsTable.StreamArn
+    # Only required if the auto generated name exceeds 64 characters
+    iamRoleStatementsName: ${self:service}-${sls:stage}-distributeTweetsToFollower
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:Query
+        Resource:
+          - !Sub "${TweetsTable.Arn}/index/byCreator"
+          - !Sub "${TimelinesTable.Arn}/index/byDistributedFrom"
+      - Effect: Allow
+        Action:
+          - dynamodb:BatchWriteItem
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource: !GetAtt TimelinesTable.Arn
+
+  syncUsersToAlgolia:
+    handler: functions/sync-users-to-algolia.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt UsersTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-admin-key
+
+  syncTweetsToAlgolia:
+    handler: functions/sync-tweets-to-algolia.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt TweetsTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-admin-key
+
+  search:
+    handler: functions/search.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-admin-key
+
+  getHashTag:
+    handler: functions/getHashTag.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${sls:stage}/algolia-admin-key
+
+  notify:
+    handler: functions/notify.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt TwitterGraphQlApi.GraphQLUrl
+      TWEETS_TABLE: !Ref TweetsTable
+      USERS_TABLE: !Ref UsersTable
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt TweetsTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${TwitterGraphQlApi.Arn}/* # Got from the template-update-stack on .serverless folder
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+      - Effect: Allow
+        Action: dynamodb:Query
+        Resource: !Sub ${UsersTable.Arn}/index/byScreenName
+
+  notifyLiked:
+    handler: functions/notify-liked.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt TwitterGraphQlApi.GraphQLUrl
+      TWEETS_TABLE: !Ref TweetsTable
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt LikesTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${TwitterGraphQlApi.Arn}/* # Got from the template-update-stack on .serverless folder
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+
+  notifyDmed:
+    handler: functions/notify-dmed.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt TwitterGraphQlApi.GraphQLUrl
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt DirectMessagesTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${TwitterGraphQlApi.Arn}/* # Got from the template-update-stack on .serverless folder
+
+  sendDirectMessage:
+    handler: functions/send-direct-message.handler
+    environment:
+      CONVERSATIONS_TABLE: !Ref ConversationsTable
+      DIRECT_MESSAGES_TABLE: !Ref DirectMessagesTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource: !GetAtt DirectMessagesTable.Arn
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource: !GetAtt ConversationsTable.Arn
+
+  getTweetCreator:
+    handler: functions/get-tweet-creator.handler
+    environment:
+      USERS_TABLE: !Ref UsersTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:BatchGetItem
+        Resource: !GetAtt UsersTable.Arn
+
+  firehoseTransformer:
+    handler: functions/firehose-transformer.handler
+    timeout: 61
+
+  setResolverLogLevelToAll:
+    handler: functions/set-resolver-log-level.handler
+    events:
+      - schedule: cron(6 * * * ? *) # 6 mins past the hour every hour
+    environment:
+      APPSYNC_API_ID: !GetAtt TwitterGraphQlApi.ApiId
+      FIELD_LOG_LEVEL: ALL
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - appsync:GetGraphqlApi
+          - appsync:UpdateGraphqlApi
+        Resource: !Ref TwitterGraphQlApi
+      - Effect: Allow
+        Action: iam:PassRole
+        Resource: !GetAtt AppSyncLoggingServiceRole.Arn
+
+  setResolverLogLevelToError:
+    handler: functions/set-resolver-log-level.handler
+    events:
+      - schedule: cron(12 * * * ? *) # 6 mins past the hour every hour
+    environment:
+      APPSYNC_API_ID: !GetAtt TwitterGraphQlApi.ApiId
+      FIELD_LOG_LEVEL: ERROR
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - appsync:GetGraphqlApi
+          - appsync:UpdateGraphqlApi
+        Resource: !Ref TwitterGraphQlApi
+      - Effect: Allow
+        Action: iam:PassRole
+        Resource: !GetAtt AppSyncLoggingServiceRole.Arn
+
+resources:
+  Resources:
+    # DynamoDB
+    UsersTable: ${file(resources/dynamodb/UsersTable.yml):UsersTable}
+    TweetsTable: ${file(resources/dynamodb/TweetsTable.yml):TweetsTable}
+    TimelinesTable: ${file(resources/dynamodb/TimelinesTable.yml):TimelinesTable}
+    LikesTable: ${file(resources/dynamodb/LikesTable.yml):LikesTable}
+    RetweetsTable: ${file(resources/dynamodb/RetweetsTable.yml):RetweetsTable}
+    RelationshipsTable: ${file(resources/dynamodb/RelationshipsTable.yml):RelationshipsTable}
+    NotificationsTable: ${file(resources/dynamodb/NotificationsTable.yml):NotificationsTable}
+    ConversationsTable: ${file(resources/dynamodb/ConversationsTable.yml):ConversationsTable}
+    DirectMessagesTable: ${file(resources/dynamodb/DirectMessagesTable.yml):DirectMessagesTable}
+
+    # Cognito
+    CognitoUserPool: ${file(resources/cognito/CognitoUserPool.yml):CognitoUserPool}
+    UserPoolInvokeConfirmUserSignupLambdaPermission: ${file(resources/cognito/UserPoolInvokeConfirmUserSignupLambdaPermission.yml):UserPoolInvokeConfirmUserSignupLambdaPermission}
+    WebUserPoolClient: ${file(resources/cognito/WebUserPoolClient.yml):WebUserPoolClient}
+    IdentityPool: ${file(resources/cognito/IdentityPool.yml):IdentityPool}
+    IdentityPoolRoleMapping: ${file(resources/cognito/IdentityPoolRoleMapping.yml):IdentityPoolRoleMapping}
+
+    # S3
+    AssetsBucket: ${file(resources/s3/AssetsBucket.yml):AssetsBucket}
+    AnalyticsBucket: ${file(resources/s3/AnalyticsBucket.yml):AnalyticsBucket}
+
+    # Kinesis
+    FirehoseStream: ${file(resources/kinesis/FirehoseStream.yml):FirehoseStream}
+
+    # Cloudwatch
+    FirehoseLogGroup: ${file(resources/cloudwatch/FirehoseLogGroup.yml):FirehoseLogGroup}
+    FirehoseLogStream: ${file(resources/cloudwatch/FirehoseLogStream.yml):FirehoseLogStream}
+
+    # IAM
+    FirehoseDeliveryIamRole: ${file(resources/iam/FirehoseDeliveryIamRole.yml):FirehoseDeliveryIamRole}
+    UnauthedClientRole: ${file(resources/iam/UnauthedClientRole.yml):UnauthedClientRole}
+    AuthedClientRole: ${file(resources/iam/AuthedClientRole.yml):AuthedClientRole}
+    AppSyncLoggingServiceRole: ${file(resources/iam/AppSyncLoggingServiceRole.yml):AppSyncLoggingServiceRole}
+
+  Outputs:
+    AwsRegion:
+      Value: ${self:custom.region}
+
+    CognitoUserPoolId:
+      Value: !Ref CognitoUserPool
+
+    WebCognitoUserPoolClientId:
+      Value: !Ref WebUserPoolClient
+
+    CognitoUserPoolProviderName:
+      Value: !GetAtt CognitoUserPool.ProviderName
+
+    CognitoIdentityPoolId:
+      Value: !Ref IdentityPool
+
+    ApiUrl:
+      Value: !GetAtt TwitterGraphQlApi.GraphQLUrl # Got from CloudFormation template update stack (.serverless folder)
+
+    FirehoseStreamName:
+      Value: !Ref FirehoseStream

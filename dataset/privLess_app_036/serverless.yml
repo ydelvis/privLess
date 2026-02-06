@@ -1,0 +1,62 @@
+service: serverless-medium-transcriptions
+
+package:
+  exclude:
+    - front/**
+    - assets/**
+    - LICENSE
+    - README.md
+    - sample-article.json
+
+custom:
+  serverless-offline:
+    port: 1337
+  s3:
+    bucket: serverless-medium-transcriptions-${opt:stage}
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  environment:
+    TRANSCRIPTS_BUCKET: ${self:custom.s3.bucket}
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 's3:*'
+      Resource: '*'
+    - Effect: 'Allow'
+      Action:
+        - 'polly:SynthesizeSpeech'
+      Resource: '*'
+
+functions:
+  transcoder:
+    handler: transcoder.handle
+    events:
+      - http:
+          path: transcode
+          method: post
+          cors: true
+
+plugins:
+  - serverless-offline
+
+resources:
+  Resources:
+    UploadBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3.bucket}
+        AccessControl: PublicRead
+        CorsConfiguration:
+          CorsRules:
+          - AllowedMethods:
+            - GET
+            - PUT
+            - POST
+            - HEAD
+            AllowedOrigins:
+            - "*"
+            AllowedHeaders:
+            - "*"
+

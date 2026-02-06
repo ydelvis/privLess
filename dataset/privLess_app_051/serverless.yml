@@ -1,0 +1,32 @@
+service: secret-baker-example # NOTE: update this with your service name
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+
+  region: us-west-2
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - kms:*
+      Resource:
+        - "*" # <--------Please put your own KMS Key Arn here.
+
+plugins:
+  localPath: "../"
+  modules:
+    - index
+
+functions:
+  test-node:
+    handler: handler.hello
+  test-python:
+    runtime: python3.8
+    handler: handler.hello
+
+custom:
+  secretBaker:
+    - MY_SECRET
+    - MY_OTHER_SECRET
+    - name: CUSTOM_SECRET
+      path: /a/custom/secret/path

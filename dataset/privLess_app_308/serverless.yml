@@ -1,0 +1,97 @@
+# For full config options, check the docs:
+#    docs.serverless.com
+
+service: realtime-transport-dashboard
+
+# Serverless framework version
+frameworkVersion: "3"
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  tableName: rtt-dashboard-${self:custom.stage}
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: prod
+  region: eu-west-1
+  httpApi:
+    cors: true
+  environment:
+    TABLE_NAME: ${self:custom.tableName}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - "Fn::GetAtt": [ RTTDashboardTable, Arn ]
+
+functions:
+  createDashboard:
+    handler: src/handler.createDashboard
+    events:
+      - httpApi:
+          path: /dashboard
+          method: POST
+  updateDashboard:
+    handler: src/handler.updateDashboard
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}
+          method: POST
+  deleteDashboard:
+    handler: src/handler.deleteDashboard
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}
+          method: DELETE
+  getDashboard:
+    handler: src/handler.getDashboard
+    timeout: 20
+    memorySize: 2048
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}
+          method: GET
+  addWidget:
+    handler: src/handler.addWidget
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}/widget
+          method: POST
+  updateWidget:
+    handler: src/handler.updateWidget
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}/widget/{widget_id}
+          method: POST
+  deleteWidget:
+    handler: src/handler.deleteWidget
+    events:
+      - httpApi:
+          path: /dashboard/{dashboard_id}/widget/{widget_id}
+          method: DELETE
+
+
+# you can add CloudFormation resource templates here
+resources:
+  Resources:
+    RTTDashboardTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

@@ -1,0 +1,120 @@
+service: bundlewatch-service
+frameworkVersion: '3'
+
+plugins:
+    - serverless-dynamodb-local
+    - serverless-domain-manager
+    - serverless-git-info
+    - serverless-offline # must be last
+
+custom:
+    stage: ${opt:stage, 'dev'}
+    storeTable: '${self:service}-store-table-${self:custom.stage}'
+    dynamodb:
+        start:
+            port: 8000
+            migrate: true
+            inMemory: true
+    githubClientId:
+        dev: '04fcf325dd26ca2a159f'
+        stage: '04fcf325dd26ca2a159f'
+        prod: '04fcf325dd26ca2a159f'
+    githubClientSecret:
+        dev: ${env:GITHUB_CLIENT_SECRET}
+        stage: ${env:GITHUB_CLIENT_SECRET}
+        prod: ${env:GITHUB_CLIENT_SECRET}
+    customDomain:
+        domainName: service.bundlewatch.io
+        basePath: ''
+        stage: ${self:custom.stage}
+        createRoute53Record: true
+        endpointType: regional
+        apiType: http
+    gitSha1: ${git:sha1} # git rev-parse --short HEAD
+
+provider:
+    name: aws
+    region: us-east-1
+    runtime: nodejs20.x
+    memorySize: 512
+    timeout: 29
+    iam:
+        role:
+            statements:
+                - Effect: Allow
+                  Action:
+                      - dynamodb:Query
+                      - dynamodb:Scan
+                      - dynamodb:GetItem
+                      - dynamodb:PutItem
+                      - dynamodb:UpdateItem
+                      - dynamodb:DeleteItem
+                      - dynamodb:DescribeTable
+                  Resource:
+                      - { 'Fn::GetAtt': ['StoreTable', 'Arn'] }
+    environment:
+        STORE_TABLE: ${self:custom.storeTable}
+        GITHUB_CLIENT_ID: ${self:custom.githubClientId.${self:custom.stage}}
+        GITHUB_CLIENT_SECRET: ${self:custom.githubClientSecret.${self:custom.stage}}
+        GIT_SHA1: ${self:custom.gitSha1}
+
+functions:
+    expressRouter:
+        handler: src/router/index.app
+        events:
+            - httpApi:
+                  path: /
+                  method: get
+            - httpApi:
+                  path: /store
+                  method: post
+            - httpApi:
+                  path: /store/lookup
+                  method: post
+            - httpApi:
+                  path: /setup-github
+                  method: get
+            - httpApi:
+                  path: /results
+                  method: get
+            - httpApi:
+                  path: /static/results-styles.css
+                  method: get
+            - httpApi:
+                  path: /static/setup-github-styles.css
+                  method: get
+            - httpApi:
+                  path: /analyze
+                  method: post
+
+resources:
+    Resources:
+        StoreTable:
+            Type: 'AWS::DynamoDB::Table'
+            DeletionPolicy: Retain
+            Properties:
+                AttributeDefinitions:
+                    - AttributeName: repo
+                      AttributeType: S
+                    - AttributeName: repoBranch
+                      AttributeType: S
+                    - AttributeName: timestamp
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: repo
+                      KeyType: HASH
+                    - AttributeName: repoBranch
+                      KeyType: RANGE
+                LocalSecondaryIndexes:
+                    - IndexName: timestamp
+                      KeySchema:
+                          - AttributeName: repo
+                            KeyType: HASH
+                          - AttributeName: timestamp
+                            KeyType: RANGE
+                      Projection:
+                          ProjectionType: KEYS_ONLY
+                ProvisionedThroughput:
+                    ReadCapacityUnits: 1
+                    WriteCapacityUnits: 1
+                TableName: ${self:custom.storeTable}

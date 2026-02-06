@@ -1,0 +1,35 @@
+service: fanout
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+  region: ${env:AWS_REGION}
+  timeout: 30
+  versionFunctions: false
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource: "arn:aws:lambda:${env:AWS_REGION}:*:function:fanout-${opt:stage}-ResizeImage"
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::${env:RESIZE_BUCKET_NAME}-${env:ENV}-results/*"
+
+resources:
+  Resources:
+    ResultsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${env:RESIZE_BUCKET_NAME-${env:ENV}-results
+
+functions:
+  UploadImage:
+    handler: handler.uploadImage
+    events:
+      - s3:
+          bucket: ${env:RESIZE_BUCKET_NAME}-${env:ENV}
+          event: s3:ObjectCreated:*
+  ResizeImage:
+    handler: handler.resizeImage

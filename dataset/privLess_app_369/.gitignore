@@ -1,0 +1,15 @@
+*.zip
+node_modules
+.serverless
+.*.swo
+.*.swp
+.swo
+.swp
+.DS_Store
+**/npm-debug.log
+coverage
+Makefile
+.buildkite
+scripts
+.nyc_output
+dist

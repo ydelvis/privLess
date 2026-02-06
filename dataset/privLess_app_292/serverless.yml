@@ -1,0 +1,46 @@
+service: lambda-sns-dlq-error-handling
+
+custom:
+  secrets: ${file(secrets.json)}
+
+plugins:
+  - serverless-pseudo-parameters
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+  region: eu-central-1
+  profile: ${self:custom.secrets.profile, 'dev'}
+  memorySize: 128
+  environment:
+    accountId: '#{AWS::AccountId}'
+    region: ${self:provider.region}
+  iamRoleStatements:
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "sns:*"
+
+functions:
+  init:
+    handler: init.handler
+    events:
+      - http:
+          path: init
+          method: post
+          cors: true
+  calculate:
+    handler: calculate.handler
+    events:
+      - sns: calculate-topic
+    onError: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:dlq-topic
+  error:
+    handler: error.handler
+    events:
+      - sns: dlq-topic
+    
+# TODO - ADD SQS QUEUE
+# resources:
+#   Resources:
+#     SQSDLQStream:

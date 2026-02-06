@@ -1,0 +1,160 @@
+service: ${self:provider.environment.UTSUSEMI_SERVICE_NAME}
+
+frameworkVersion: ">=1.23.0 <2.0.0"
+
+provider:
+  name: aws
+  environment:
+    UTSUSEMI_STAGE: ${env:UTSUSEMI_STAGE, 'v0'}
+    UTSUSEMI_SERVICE_NAME: ${env:UTSUSEMI_SERVICE_NAME, file(./config.yml):serviceName, 'utsusemi'}
+    UTSUSEMI_REGION: ${env:UTSUSEMI_REGION, file(./config.yml):region, 'ap-northeast-1'}
+    UTSUSEMI_TARGET_HOST: ${env:UTSUSEMI_TARGET_HOST, file(./config.yml):targetHost}
+    UTSUSEMI_BUCKET_NAME: ${env:UTSUSEMI_BUCKET_NAME, file(./config.yml):bucketName}
+    UTSUSEMI_WORKER_PROCESS: ${env:UTSUSEMI_WORKER_PROCESS, file(./config.yml):workerProcess, '2'}
+    UTSUSEMI_WORKER_DELAY: ${env:UTSUSEMI_WORKER_DELAY, file(./config.yml):workerDelay, '100'}
+    UTSUSEMI_THREADS_PER_WORKER: ${env:UTSUSEMI_THREADS_PER_WORKER, file(./config.yml):threadsPerWorker, '1'}
+    UTSUSEMI_FORCE_TRAILING_SLASH: ${env:UTSUSEMI_FORCE_TRAILING_SLASH, file(./config.yml):forceTrailingSlash, '1'}
+    UTSUSEMI_WITH_QUERY_STRING: ${env:UTSUSEMI_WITH_QUERY_STRING, file(./config.yml):withQueryString, '0'}
+    UTSUSEMI_USE_API_KEY: ${env:UTSUSEMI_USE_API_KEY, file(./config.yml):useApiKey, '0'}
+    UTSUSEMI_CRAWLER_USER_AGENT: ${env:UTSUSEMI_CRAWLER_USER_AGENT, file(./config.yml):crawlerUserAgent, ''}
+  runtime: nodejs6.10
+  stage: ${self:provider.environment.UTSUSEMI_STAGE}
+  region: ${self:provider.environment.UTSUSEMI_REGION}
+  timeout: 10
+  cfLogs: true
+  apiKeys:
+    - "${self:service}-${self:provider.stage}-apiKey"
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - "s3:*"
+      Resource:
+        - { "Fn::Join" : ["", ["arn:aws:s3:::", "${self:provider.environment.UTSUSEMI_BUCKET_NAME}"] ] }
+        - { "Fn::Join" : ["", ["arn:aws:s3:::", "${self:provider.environment.UTSUSEMI_BUCKET_NAME}", "/*"] ] }
+    - Effect: Allow
+      Action:
+        - "lambda:InvokeFunction"
+        - "lambda:InvokeAsync"
+      Resource:
+        - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-*"
+    - Effect: Allow
+      Action:
+        - "sqs:*"
+      Resource:
+        - "arn:aws:sqs:${self:provider.region}:*:${self:service}-${self:provider.stage}-Channel"
+
+plugins:
+  - utsusemi-env-checker
+  - utsusemi-use-api-key
+  - serverless-s3-remover
+
+custom:
+  remover:
+    prompt: true
+    buckets:
+      - "${self:provider.environment.UTSUSEMI_BUCKET_NAME}"
+
+package:
+  include:
+    - package.json
+    - src/**
+  exclude:
+    - .git/**
+    - doc/**
+    - node_modules/aws-sdk/**
+
+functions:
+  starter:
+    handler: src/handler/starter.handler
+    timeout: 15
+    name: ${self:service}-${self:provider.stage}-starter
+    events:
+      - http:
+          path: /in
+          method: get
+          integration: lambda-proxy
+          private: false
+  purge:
+    handler: src/handler/purge.handler
+    events:
+      - http:
+          path: /purge
+          method: get
+          integration: lambda-proxy
+          private: false
+  delete:
+    handler: src/handler/delete.handler
+    timeout: 30
+    name: ${self:service}-${self:provider.stage}-delete
+    events:
+      - http:
+          path: /delete
+          method: get
+          integration: lambda-proxy
+          private: false
+  status:
+    handler: src/handler/status.handler
+    events:
+      - http:
+          path: /status
+          method: get
+          integration: lambda-proxy
+          private: false
+  nstarter:
+    handler: src/handler/nstarter.handler
+    events:
+      - http:
+          path: /nin
+          method: post
+          integration: lambda-proxy
+          private: false
+  worker:
+    handler: src/handler/worker.handler
+    timeout: 15
+    name: ${self:service}-${self:provider.stage}-worker
+  s3worker:
+    handler: src/handler/s3worker.handler
+    name: ${self:service}-${self:provider.stage}-s3worker
+
+resources:
+  Resources:
+    HostingBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.UTSUSEMI_BUCKET_NAME}
+        AccessControl: Private
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: error.html
+    HostingBucketPolicy:
+      Type: "AWS::S3::BucketPolicy"
+      Properties:
+        Bucket: { Ref: HostingBucket }
+        PolicyDocument:
+          Statement:
+            -
+              Action:
+                - "s3:GetObject"
+              Effect: "Allow"
+              Resource:
+                Fn::Join:
+                  - ""
+                  -
+                    - "arn:aws:s3:::"
+                    -
+                      Ref: HostingBucket
+                    - "/*"
+              Principal: "*"
+    Channel:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        DelaySeconds: 0
+        MaximumMessageSize: 262144
+        MessageRetentionPeriod: 3600
+        QueueName: ${self:service}-${self:provider.stage}-Channel
+        ReceiveMessageWaitTimeSeconds: 0
+        VisibilityTimeout: 30
+  Outputs:
+    UtsusemiWebsiteURL:
+      Value: { "Fn::GetAtt" : [ HostingBucket, WebsiteURL ] }
+      Description: "URL for website hosted on S3"

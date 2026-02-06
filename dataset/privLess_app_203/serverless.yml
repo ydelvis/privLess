@@ -1,0 +1,91 @@
+frameworkVersion: ">=1.2.0 <2.0.0"
+
+service: serverless-blog-workshop-ref # NOTE: update this with your service name
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+  environment:
+    SERVERLESS_STAGE: ${opt:stage, self:provider.stage}
+    SERVERLESS_PROJECT: ${self:service}
+    SERVERLESS_REGION: ${opt:region, self:provider.region}
+    TABLE_NAME: ${self:provider.environment.SERVERLESS_PROJECT}-${self:provider.environment.SERVERLESS_STAGE}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+      - dynamodb:*
+      Resource: arn:aws:dynamodb:${self:provider.environment.SERVERLESS_REGION}:*:*
+    - Effect: Allow
+      Action:
+      - SNS:*
+      Resource: arn:aws:sns:${self:provider.environment.SERVERLESS_REGION}:*:*
+package:
+  exclude:
+    - test/**
+    - .git/**
+
+functions:
+  posts:
+    handler: posts/index.handler
+    events:
+      - http:
+          path: posts
+          method: get
+          cors: true
+          integration: lambda
+      - http:
+          path: posts
+          method: post
+          cors: true
+          integration: lambda
+      - http:
+          path: posts/{id}
+          method: put
+          cors: true
+          integration: lambda
+      - http:
+          path: posts/{id}
+          method: delete
+          cors: true         
+          integration: lambda
+
+plugins:
+  - serverless-mocha-plugin
+  - serverless-webpack
+  - serverless-offline
+
+custom:
+  webpackIncludeModules: true
+
+resources:
+  Resources:
+# DynamoDB Blog table for workshop
+    BlogTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.TABLE_NAME}
+
+#    SessionsTable:
+#      Type: AWS::DynamoDB::Table
+#      DeletionPolicy: Delete
+#      Properties:
+#        AttributeDefinitions:
+#          - AttributeName: id
+#            AttributeType: S
+#        KeySchema:
+#          - AttributeName: id
+#            KeyType: HASH
+#        ProvisionedThroughput:
+#          ReadCapacityUnits: 1
+#          WriteCapacityUnits: 1
+#        TableName: ${self:service}-sessions-${opt:stage, self:provider.stage}

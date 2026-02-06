@@ -1,0 +1,83 @@
+service: vidhub-img # NOTE: update this with your service name
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  memorySize: 1536
+
+  stage: production
+  region: us-east-1 # Update to whatever region you would like
+
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:ListBucket"
+      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource:
+        Fn::Join:
+          - ""
+          - - "arn:aws:s3:::"
+            - "Ref" : "ServerlessDeploymentBucket"
+            - "/*"
+    - Effect: "Allow"
+      Action:
+        - "s3:ListBucket"
+        - "s3:PutObject"
+        - "s3:PutObjectAcl"
+      Resource: arn:aws:s3:::img.vidhub.co/* # the bucket ARN to store images in
+
+functions:
+  index:
+    handler: handler.index
+    events:
+      - http:
+          path: /{img}
+          method: get
+    environment:
+      S3_BUCKET: img.vidhub.co # bucket name to store images
+
+resources:
+  Resources:
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Aliases:
+              - img.vidhub.co # DNS to replace CloudFront's
+          Origins:
+              - DomainName: { "Fn::Join": [ ".", [ { "Ref": "ApiGatewayRestApi" }, "execute-api", "us-east-1", "amazonaws.com" ] ] }
+                OriginPath: /production
+                Id: vidhub-img
+                CustomOriginConfig:
+                  HTTPPort: 80
+                  HTTPSPort: 443
+                  OriginProtocolPolicy: https-only
+                  OriginSSLProtocols:
+                    - TLSv1
+                    - TLSv1.1
+                    - TLSv1.2
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            TargetOriginId: vidhub-img
+            ViewerProtocolPolicy: redirect-to-https
+            ForwardedValues:
+              Cookies:
+                Forward: none
+              QueryString: true
+          Enabled: true
+          Comment: Vidhub Img  # Can be whatever
+          DefaultRootObject: index.html
+          ViewerCertificate:
+            AcmCertificateArn: arn:aws:acm:us-east-1:563115270151:certificate/826e8b5b-3ace-4fdf-83be-330a66a27ee7 # A certificate in ACM for the DNS being used
+            SslSupportMethod: sni-only
+          PriceClass: PriceClass_100

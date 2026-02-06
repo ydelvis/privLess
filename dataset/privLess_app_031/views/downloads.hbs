@@ -1,0 +1,464 @@
+<head>
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ gTagId }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+
+        gtag('js', new Date());
+
+        gtag('config', '{{ gTagId }}');
+    </script>
+    <script data-ad-client="{{ adCode }}" async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="https://raw.githubusercontent.com/shalvah/DownloadThisVideo/master/favicon.ico"
+          type="image/x-icon"/>
+    <link rel="icon" href="https://raw.githubusercontent.com/shalvah/DownloadThisVideo/master/favicon-32x32.png"
+          type="image/png"/>
+    <link rel="icon" href="https://raw.githubusercontent.com/shalvah/DownloadThisVideo/master/favicon-16x16.png"
+          type="image/png"/>
+    <link rel="apple-touch-icon-precomposed" sizes="180x180"
+          href="https://raw.githubusercontent.com/shalvah/DownloadThisVideo/master/apple-touch-icon.png">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', Calibri, sans-serif;
+            height: 100%;
+            box-sizing: border-box;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            font-size: 1.2em;
+        }
+
+        .content {
+            flex-grow: 1;
+        }
+
+        footer {
+            text-align: center;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        .emoji-flag-nigeria {
+            display: inline-block;
+            height: 1em;
+            width: 1em;
+            margin: 0 .05em 0 .1em;
+            vertical-align: -0.1em;
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-size: 1em 1em;
+            background-image: url("https://twemoji.maxcdn.com/v/latest/svg/1f1f3-1f1ec.svg")
+        }
+
+    </style>
+    <title>{{ username }}'s downloads by @this_vid</title>
+</head>
+
+<body>
+<div class="content">
+    <h2>{{ username }}'s downloads</h2>
+    <p>
+        <small>Downloads you've requested via <a href="https://twitter.com/this_vid">@this_vid on Twitter</a> in the
+            past 48 hours show up here.</small>
+    </p>
+    {{#each downloads }}
+        <small>{{ this.time }}</small>
+        <div><a href="{{ this.videoUrl }}" target="_blank">Video link</a> &bullet; <a
+                href="https://twitter.com/i/status/{{ this.tweet }}" target="_blank">View tweet</a></div>
+        <br>
+    {{/each}}
+
+
+    <div id="notifications-buttons">
+        <div id="switch_prompt" style="display: none;">
+            <small>You've got push notifications for downloads enabled on another device. You can switch to this one, or
+                turn off notifications entirely.</small><br>
+            <button onclick="requestPermission(this)">Switch notifications to this device</button>
+            <button onclick="turnOffNotifications()">Disable all notifications</button>
+            <br>
+        </div>
+
+        <div id="enable_prompt" style="display: none;">
+            <small>Psst! @this_vid can send you a push notification on your device for new downloads, if you'd like.💃
+                <a
+                        href="/p/faq/#notifications">See the FAQ for details.</a></small>
+            <br>
+            <button onclick="requestPermission(this)">Enable notifications</button>
+            <br>
+        </div>
+
+        <div id="disable_prompt" style="display: none;">
+            <small>You've got push notifications for downloads enabled on this device. </small><br>
+            <button onclick="turnOffNotifications()">Disable all notifications</button>
+            <br>
+        </div>
+    </div>
+
+    <div id="twittersignin" style="display: none;">
+        Last step! <a href="/_/starttwittersignin?username={{ username }}">Sign in with Twitter</a> to authorize
+        this action.
+        <br>
+    </div>
+</div>
+<br>
+
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+<!-- Testing Ad Unit -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="{{ adCode }}"
+     data-ad-slot="1262324327"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+    (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+
+{{#if downloads.length }}
+    <!-- Only show second ad slot if there's enough content, to avoid policy violation -->
+
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+    <!-- Testing Ad Unit -->
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="{{ adCode }}"
+         data-ad-slot="1262324327"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+{{/if}}
+
+<br>
+<footer style="margin-bottom: 0; padding-bottom: 0">
+    <!-- Thanks to Twemoji (and boo to Microsoft for not having flag emojis in Win10) -->
+    <div>
+        <small style="font-size: 0.7em;">
+            Made in Lagos, Nigeria<i class="emoji-flag-nigeria"></i>
+        </small>
+    </div>
+    <br>
+    <div>
+        <small>
+            <a href="https://www.patreon.com/shalvah">Support @this_vid</a>
+            &nbsp;|&nbsp;
+            <a href="/p/faq">See the FAQ</a>
+            &nbsp;|&nbsp;
+            <a href="https://github.com/shalvah/DownloadThisVideo">Check out the source code</a>
+        </small>
+    </div>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/6.6.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/6.6.1/firebase-messaging.js"></script>
+
+<script>
+    const OSes = {
+        macOS: 'macOS',
+        windows: "Windows",
+        linux: "Linux",
+        android: "Android",
+        iOS: "iOS",
+        unknown: null,
+    };
+
+    function getOS() {
+        const userAgent = window.navigator.userAgent;
+        const platform = window.navigator.platform;
+        const macosPlatforms = ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
+        const windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'];
+        const iosPlatforms = ['iPhone', 'iPad', 'iPod'];
+        let os = OSes.unknown;
+
+        if (macosPlatforms.indexOf(platform) !== -1) {
+            os = OSes.macOS;
+        } else if (iosPlatforms.indexOf(platform) !== -1) {
+            os = OSes.iOS;
+        } else if (windowsPlatforms.indexOf(platform) !== -1) {
+            os = OSes.windows;
+        } else if (/Android/.test(userAgent)) {
+            os = OSes.android;
+        } else if (/Linux/.test(platform)) {
+            os = OSes.linux;
+        }
+
+        return os;
+    }
+
+    const browsers = {
+        opera: "Opera",
+        IE: "IE",
+        chrome: "Chrome",
+        safari: "Safari",
+        firefox: "Firefox",
+        unknown: null,
+    };
+
+    function getBrowser() {
+        var userAgent = navigator.userAgent;
+        var browserName = browsers.unknown;
+
+        if (userAgent.includes("Opera")) {
+            browserName = browsers.opera;
+        } else if (userAgent.includes("MSIE")) {
+            browserName = browsers.IE;
+        } else if (userAgent.includes("Chrome")) {
+            browserName = browsers.chrome;
+        } else if (userAgent.includes("Safari")) {
+            browserName = browsers.safari;
+        } else if (userAgent.includes("Firefox")) {
+            browserName = browsers.firefox;
+        }
+
+        return browserName;
+    }
+</script>
+
+<script>
+        {{#if settings.fbToken }}
+        window.existingFbToken = "{{ settings.fbToken }}";
+        {{/if}}
+
+        {{#if settings.notifications }}
+        window.hasNotificationsEnabled = true;
+        {{/if}}
+</script>
+
+<script>
+    function initializeAndConfigurePushNotifications() {
+
+        function notificationsNotSupported(deviceOrBrowser) {
+            document.querySelector("#notifications-buttons").innerHTML =
+                    `Sorry, push notifications aren't supported on this ${deviceOrBrowser}😟. We recommend Google Chrome or Firefox on Android, Windows, macOS or Linux`;
+        }
+
+        if (!("serviceWorker" in navigator)) {
+            console.log("Service workers not supported.");
+            return;
+        }
+
+        const os = getOS();
+        if ([OSes.iOS, OSes.unknown].includes(os)) {
+            console.log("Not supported on " + os);
+            notificationsNotSupported(`OS (${os})`);
+            return;
+        }
+
+        const browser = getBrowser();
+        if ([browsers.safari, browsers.IE, browsers.unknown].includes(browser)) {
+            console.log("Not supported on " + browser);
+            notificationsNotSupported(`browser (${browser})`);
+            return;
+        }
+
+        initializeFirebase();
+
+        initializeNotificationsUI();
+
+        setTokenRefreshHandler();
+
+        setNewMessageHandler();
+
+        markTokenSentIfApplicable();
+
+    }
+
+    function initializeFirebase() {
+        var firebaseConfig = {
+            apiKey: "AIzaSyCj2NkmY_s5WaIrTppLiXyavurIuFiW9N4",
+            projectId: "downloadthisvideo-662ae",
+            messagingSenderId: "118497632459",
+            appId: "1:118497632459:web:c5a53bf01c2547a9fbfb4e"
+        };
+        firebase.initializeApp(firebaseConfig);
+        window.messaging = firebase.messaging();
+        messaging.usePublicVapidKey("BPWZObbrWgRIOpHwSfJBAHh2GLMFcTFX2tYzrBPE5-_yGTeg_EY7bo5naJ2zFLoAZW1Vf5U3wcZUraZLxHA6rWU");
+
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+                .then(reg => console.log('Registered SW successfully', reg))
+                .catch(err => console.log('Failed to register SW', err))
+    }
+
+    function setTokenRefreshHandler() {
+        messaging.onTokenRefresh(() => {
+            messaging.getToken()
+                    .then((refreshedToken) => {
+                        console.log('Token refreshed.');
+                        setTokenSentToServer(false);
+                        enableTwitterSignInLink(refreshedToken);
+                    })
+                    .catch((err) => {
+                        console.log('Unable to retrieve refreshed token ', err);
+                    });
+        });
+    }
+
+    function setNewMessageHandler() {
+        messaging.onMessage((payload) => {
+            console.log('Message received. ', payload);
+            if (Notification.permission == 'granted') {
+                navigator.serviceWorker.getRegistration().then((reg) => {
+                    reg.showNotification(payload.data.title,
+                            {body: "Your video's ready!🎉", data: {username: payload.data.username}});
+                });
+            } else {
+                console.log("No notification permission")
+            }
+        });
+    }
+
+    function markTokenSentIfApplicable() {
+        const url = new URL(window.location);
+        const params = new URLSearchParams(url.search);
+        if (params.has('fbt')) {
+            messaging.getToken()
+                    .then((token) => {
+                        if (token === params.get('fbt')) {
+                            console.log("Tokens match; saved");
+                            setTokenSentToServer(true);
+                            location.href = location.origin + location.pathname;
+                        } else {
+                            console.log("Tokens don't match");
+                        }
+                    })
+                    .catch((err) => {
+                        console.log('Unable to retrieve token ', err);
+                    });
+        }
+    }
+
+    function initializeNotificationsUI() {
+        messaging.getToken().then((currentToken) => {
+            console.log({currentToken});
+            if (currentToken) {
+                if (window.hasNotificationsEnabled) {
+                    const hasNotificationsOnThisDevice = window.existingFbToken && window.existingFbToken === currentToken;
+                    if (hasNotificationsOnThisDevice) {
+                        // Notifications are enabled for this device
+                        showDisableNotificationsPrompt();
+                    } else {
+                        // They're on a different device
+                        showSwitchNotificationsPrompt();
+                    }
+                } else {
+                    // Doesn't have any notifications enabled
+                    showEnableNotificationsPrompt();
+                }
+            } else {
+                console.log('No Instance ID token available.');
+                showEnableNotificationsPrompt();
+            }
+        }).catch((err) => {
+            console.log('An error occurred while retrieving token. ', err);
+            // Abort
+            hideEnableNotificationsPrompt();
+            hideSwitchNotificationsPrompt();
+            hideDisableNotificationsPrompt();
+        });
+    }
+
+    function hideEnableNotificationsPrompt() {
+        document.getElementById('enable_prompt').style.display = "none";
+    }
+
+    function hideSwitchNotificationsPrompt() {
+        document.getElementById('switch_prompt').style.display = "none";
+    }
+
+    function hideDisableNotificationsPrompt() {
+        document.getElementById('disable_prompt').style.display = "none";
+    }
+
+    function showEnableNotificationsPrompt() {
+        document.getElementById('enable_prompt').style.display = "block";
+        document.querySelector('#enable_prompt button').disabled = false;
+        document.querySelector('#enable_prompt button').textContent = "Enable notifications";
+        setTokenSentToServer(false);
+    }
+
+    function showSwitchNotificationsPrompt() {
+        document.getElementById('switch_prompt').style.display = "block";
+        document.querySelector('#switch_prompt button').textContent = "Switch notifications to this device";
+        setTokenSentToServer(false);
+    }
+
+    function showDisableNotificationsPrompt() {
+        document.getElementById('disable_prompt').style.display = "block";
+        setTokenSentToServer(true);
+    }
+
+    function setTokenSentToServer(sent) {
+        window.localStorage.setItem('sentToServer', sent ? '1' : '0');
+    }
+
+    function isTokenSentToServer() {
+        return window.localStorage.getItem('sentToServer') == '1';
+    }
+
+    function requestPermission(button) {
+        Notification.requestPermission()
+                .then((permission) => {
+                    if (permission === 'granted') {
+                        console.log('Notification permission granted.');
+                        button.disabled = true;
+                        button.textContent = "Loading...";
+
+                        messaging.getToken().then((currentToken) => {
+                            console.log({currentToken});
+                            if (currentToken) {
+                                hideEnableNotificationsPrompt();
+                                hideSwitchNotificationsPrompt();
+                                enableTwitterSignInLink(currentToken);
+                            } else {
+                                console.log('No Instance ID token available.');
+                                // Failed, restore the button
+                                window.hasNotificationsEnabled
+                                        ? showSwitchNotificationsPrompt()
+                                        : showEnableNotificationsPrompt();
+                            }
+                        }).catch((err) => {
+                            console.log('An error occurred while retrieving token. ', err);
+                            hideEnableNotificationsPrompt();
+                        });
+                    } else {
+                        console.log('Unable to get permission to notify.');
+                    }
+                });
+    }
+
+    function turnOffNotifications() {
+        hideDisableNotificationsPrompt();
+        hideSwitchNotificationsPrompt();
+        enableTwitterSignInLink(null, 'disable');
+    }
+
+    function enableTwitterSignInLink(fbtoken, action = null) {
+        if (fbtoken) {
+            document.querySelector('#twittersignin a').href += `&fbtoken=${fbtoken}`;
+        }
+        if (action) {
+            document.querySelector('#twittersignin a').href += `&action=${action}`;
+        }
+        document.querySelector('#twittersignin').style.display = 'block';
+    }
+</script>
+
+<script>
+    initializeAndConfigurePushNotifications();
+</script>
+</body>

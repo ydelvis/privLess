@@ -1,0 +1,101 @@
+service: serverless-restaurant-customers
+
+plugins:
+  - serverless-offline-sns
+  - serverless-dynamodb-local
+  - serverless-offline #serverless-offline needs to be last in the list
+
+custom:
+  dynamodb:
+    start:
+      migrate: true
+  serverless-offline-sns:
+    port: 4002
+    debug: true
+  serverless-offline:
+    babelOptions:
+      presets: ["env"]
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  stage: dev
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - "sns:*"
+      Resource:
+        - { "Fn::GetAtt": ["CustomersEventsDynamoDBTable", "Arn" ] }
+        - { "Fn::GetAtt": ["CustomersCustomersDynamoDBTable", "Arn" ] }
+        - "arn:aws:sns:us-east-1:${ssm:accountId}:customers-events"
+  environment:
+    TOPIC_NAME: 'customers-events'
+    AWS_ACCOUNT_ID: '${ssm:accountId}'
+    EVENTS_TABLE: 'customers-events-table-${self:provider.stage}'
+    CUSTOMERS_TABLE: 'customers-customers-table-${self:provider.stage}'
+
+functions:
+  handleCommand:
+    handler: lib/commands.handler
+    events:
+      - http: 'POST /commands'
+
+  handleQuery:
+    handler: lib/queries.handler
+    events:
+      - http: 'GET /customers'
+      - http: 'GET /customers/{proxy+}'
+
+  persistEvent:
+    handler: lib/listeners.persistEvent
+    events:
+      - sns:
+          topicName: customers-events
+          displayName: "Customers domain events"
+
+  persistCustomer:
+    handler: lib/listeners.persistCustomer
+    events:
+      - sns:
+          topicName: customers-events
+          displayName: "Customers domain events"
+
+resources:
+  Resources:
+    CustomersEventsDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        TableName: 'customers-events-table-${self:provider.stage}'
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    CustomersCustomersDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        TableName: 'customers-customers-table-${self:provider.stage}'
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

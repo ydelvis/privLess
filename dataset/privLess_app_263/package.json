@@ -1,0 +1,43 @@
+{
+  "name": "serverless-image-resizer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:function": "serverless deploy function -f imageResizer",
+    "invoke": "serverless invoke -f imageResizer --path data/event.json",
+    "invoke:local": "yarn run webpack:invoke",
+    "lint": "yarn lint:table",
+    "lint:table": "eslint . --format table",
+    "lint:codeframe": "eslint . --format codeframe",
+    "lint:fix": "eslint . --fix",
+    "logs": "serverless logs -f imageResizer -t",
+    "upload_source_image": "aws s3 cp data/pastel_400x400.jpg s3://${SOURCE_S3_BUCKET_NAME}/${SOURCE_S3_PREFIX}/pastel_400x400.jpg",
+    "webpack:build": "serverless webpack --out .webpack",
+    "webpack:invoke": "serverless webpack invoke -f imageResizer --path data/event.json"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.6.15",
+    "babel-polyfill": "^6.16.0",
+    "gm": "^1.23.0",
+    "ulid": "^0.1.0",
+    "webpack": "^2.2.1",
+    "webpack-node-externals": "^1.5.4"
+  },
+  "devDependencies": {
+    "babel-core": "^6.18.2",
+    "babel-loader": "^6.2.7",
+    "babel-preset-es2015": "^6.18.0",
+    "babel-preset-stage-3": "^6.17.0",
+    "eslint": "^3.9.1",
+    "eslint-config-airbnb-base": "^10.0.1",
+    "eslint-plugin-import": "^2.2.0",
+    "serverless": "^1.1.0",
+    "serverless-s3-remover": "^0.2.0",
+    "serverless-webpack": "^2.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

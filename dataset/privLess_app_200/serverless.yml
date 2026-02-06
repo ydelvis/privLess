@@ -1,0 +1,104 @@
+service: ${file(../config.cjs):config.serviceName}-backend
+frameworkVersion: "3"
+
+plugins:
+  - serverless-iam-roles-per-function
+
+package:
+  patterns:
+    - "!test/**"
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  stage: ${file(../config.cjs):config.stage}
+  region: ${file(../config.cjs):config.region}
+  tracing:
+    apiGateway: true
+    lambda: true
+  environment:
+    BUCKET_NAME: !Ref FileBucket
+    BASE_URL: https://${self:custom.domainName}
+    POWERTOOLS_SERVICE_NAME: weshare
+    POWERTOOLS_METRICS_NAMESPACE: weshare
+  httpApi:
+    authorizers:
+      jwtAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolIdParameter}'
+        audience:
+          - !Ref UserPoolClientIdParameter
+
+custom:
+  domainName: ${file(../config.cjs):config.domain}
+
+functions:
+  createShare:
+    handler: share-handler.handleEvent
+    events:
+      - httpApi:
+          method: POST
+          path: "/"
+          authorizer:
+            name: jwtAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource:
+          - !Sub "arn:aws:s3:::${FileBucket}/shares/*"
+      - Effect: Allow
+        Action:
+          - s3:ListBucket
+        Resource:
+          - !Sub "arn:aws:s3:::${FileBucket}"
+
+  download:
+    handler: download.handleEvent
+    events:
+      - httpApi:
+          method: GET
+          path: "/{id}"
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+        Resource:
+          - !Sub "arn:aws:s3:::${FileBucket}/shares/*"
+
+resources:
+  Parameters:
+    UserPoolIdParameter:
+      Type: AWS::SSM::Parameter::Value<String>
+      Default: /weshare/${sls:stage}/userPoolId
+    UserPoolClientIdParameter:
+      Type: AWS::SSM::Parameter::Value<String>
+      Default: /weshare/${sls:stage}/userPoolClientId
+
+  Resources:
+    CustomDomainPathMapping:
+      Type: AWS::ApiGatewayV2::ApiMapping
+      Properties:
+        ApiId: !Ref HttpApi
+        ApiMappingKey: "share"
+        DomainName: ${self:custom.domainName}
+        Stage: !Ref HttpApiStage
+
+    FileBucket:
+      Type: AWS::S3::Bucket
+      DeletionPolicy: Retain
+      Properties:
+        BucketName: ${file(./unique-bucket-name.cjs):bucketName}
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        NotificationConfiguration:
+          EventBridgeConfiguration:
+            EventBridgeEnabled: true

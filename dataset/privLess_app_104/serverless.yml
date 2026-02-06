@@ -1,0 +1,28 @@
+org: erickworkspace
+app: e2e-tests-localstack
+service: aws-node-project
+frameworkVersion: '3.38'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: s3:ListAllMyBuckets
+          Resource: '*'
+plugins:
+  - serverless-offline
+
+package:
+  excludeDevDependencies: true
+
+functions:
+  hello:
+    handler: ./src/index.main
+    events:
+      - httpApi:
+          path: /
+          method: get

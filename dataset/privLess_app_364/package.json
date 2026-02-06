@@ -1,0 +1,27 @@
+{
+  "name": "step-functions-demo",
+  "version": "1.0.0",
+  "description": "A demo project for creating AWS StepFunctions backed by AWS Lambda written in JavaScript",
+  "main": "handler.js",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/AgileVisionCompany/step-functions-demo.git"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "stepfunctions"
+  ],
+  "author": "Volodymyr Rudyi <volodymyr@agilevision.pl>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/AgileVisionCompany/step-functions-demo/issues"
+  },
+  "homepage": "https://github.com/AgileVisionCompany/step-functions-demo#readme",
+  "dependencies": {
+    "async": "^2.1.4",
+    "aws-sdk": "^2.11.0",
+    "fast-csv": "^2.3.1",
+    "serverless-step-functions": "^0.3.0"
+  }
+}

@@ -1,0 +1,148 @@
+service: nostr-image-services-${sls:stage}
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: eu-west-1
+  architecture: arm64
+  timeout: 29
+  # HTTP Api gateway
+  httpApi:
+    cors:
+      allowedMethods:
+        - GET
+        - POST
+      allowedOrigins: "*"
+  environment:
+    S3_BUCKET: ${self:custom.S3_BUCKET}
+    DYNAMODB_TABLE: ${self:service}
+    LNBITS_HOST: ${self:custom.LNBITS_HOST}
+    LNBITS_API_INVOICE_KEY: ${self:custom.LNBITS_API_INVOICE_KEY}
+    CLOUDFRONT_DOMAIN_NAME: ${self:custom.CLOUDFRONT_DOMAIN_NAME}
+    CF_CUSTOM_DOMAIN: ${self:custom.CF_CUSTOM_DOMAIN}
+    WEBHOOW_URL: !GetAtt HttpApi.ApiEndpoint
+    ALLOWED_IP: ${self:custom.ALLOWED_IP}
+    PRICE: ${self:custom.PRICE}
+    API_CUSTOM_DOMAIN: ${self:custom.API_CUSTOM_DOMAIN}
+  iamRoleStatements: 
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+      Resource:
+        - Fn::Join:
+          - ''
+          - - 'arn:aws:s3:::'
+            - ${self:custom.S3_BUCKET}
+            - '/*'
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:GetItem
+        - dynamodb:DeleteItem
+      Resource: { "Fn::GetAtt": [PaymentHashTableNstr, Arn] }
+
+
+custom:
+  LNBITS_HOST: ${file(./variables.yml):LNBITS_HOST}
+  LNBITS_API_INVOICE_KEY: ${file(./variables.yml):LNBITS_API_INVOICE_KEY}
+  CLOUDFRONT_DOMAIN_NAME: ${file(./variables.yml):CLOUDFRONT_DOMAIN_NAME}
+  S3_BUCKET: ${file(./variables.yml):S3_BUCKET}
+  ALLOWED_IP: ${file(./variables.yml):ALLOWED_IP}
+  PRICE: ${file(./variables.yml):PRICE}
+  API_CUSTOM_DOMAIN: ${file(./variables.yml):API_CUSTOM_DOMAIN}
+  ROUTE53_ZONE_ID: ${file(./variables.yml):ROUTE53_ZONE_ID}
+  CF_CUSTOM_DOMAIN: ${file(./variables.yml):CF_CUSTOM_DOMAIN}
+
+package:
+  individually: true
+  patterns:
+    - '!serverless.yml'
+    - '!variables.sample.yml'
+    - '!variables.yml'
+
+
+functions:
+  paymentNotificationNstr:
+    handler: lambda/paymentNotification.paymentNotification
+    logRetentionInDays: 3
+    reservedConcurrency: 10
+    package:
+      individually: true
+      patterns:
+        - '!lambda/**'
+        - lambda/paymentNotification.js
+    events:
+      - httpApi:
+          path: /paymentNotification
+          method: POST
+  uploadFileNstr:
+    handler: lambda/uploadFile.uploadFile
+    logRetentionInDays: 3
+    reservedConcurrency: 10
+    package:
+      individually: true
+      patterns:
+        - '!lambda/**'
+        - lambda/uploadFile.js
+    events:
+      - httpApi:
+          path: /uploadFile
+          method: POST
+  checkPaymentNstr:
+    handler: lambda/checkPayment.checkPayment
+    logRetentionInDays: 3
+    reservedConcurrency: 10
+    package:
+      individually: true
+      patterns:
+        - '!lambda/**'
+        - lambda/checkPayment.js
+    events:
+      - httpApi:
+          path: /checkPayment
+          method: POST
+  getInvoiceNstr:
+    handler: lambda/getInvoice.getInvoice
+    logRetentionInDays: 3
+    reservedConcurrency: 10
+    package:
+      individually: true
+      patterns:
+          - '!lambda/**'
+          - lambda/getInvoice.js
+    events: 
+      - httpApi:
+          path: /getInvoice
+          method: GET
+
+resources:
+  Resources:
+    CertificateApiNstr:
+      Type: AWS::CertificateManager::Certificate
+      Properties:
+        DomainName: ${self:custom.API_CUSTOM_DOMAIN}
+        ValidationMethod: DNS
+        DomainValidationOptions:
+          - DomainName: ${self:custom.API_CUSTOM_DOMAIN}
+            HostedZoneId: ${self:custom.ROUTE53_ZONE_ID}
+
+
+
+# create dynamoDB table
+    PaymentHashTableNstr:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}
+        AttributeDefinitions:
+          - AttributeName: payment_hash
+            AttributeType: S
+        KeySchema:
+          - AttributeName: payment_hash
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+
+
+

@@ -1,0 +1,442 @@
+service: realworld
+
+frameworkVersion: '>=1.28.0 <2.0.0'
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: ${opt:stage, "dev"}
+  region: ${opt:region, "eu-west-1"}
+  environment:
+    STAGE: ${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:BatchGetItem
+        - dynamodb:DeleteItem
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:Query
+        - dynamodb:UpdateItem
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/*"
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./bin/**
+
+functions:
+
+  users-post:
+    handler: bin/users-post
+    events:
+      - http:
+          path: users
+          method: post
+          cors: true
+
+  users-login-post:
+    handler: bin/users-login-post
+    events:
+      - http:
+          path: users/login
+          method: post
+          cors: true
+
+  user-get:
+    handler: bin/user-get
+    events:
+      - http:
+          path: user
+          method: get
+          cors: true
+
+  user-put:
+    handler: bin/user-put
+    events:
+      - http:
+          path: user
+          method: put
+          cors: true
+
+  profiles-get:
+    handler: bin/profiles-get
+    events:
+      - http:
+          path: profiles/{username}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                username: true
+
+  profiles-follow-post:
+    handler: bin/profiles-follow-post
+    events:
+      - http:
+          path: profiles/{username}/follow
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                username: true
+
+  profiles-follow-delete:
+    handler: bin/profiles-follow-delete
+    events:
+      - http:
+          path: profiles/{username}/follow
+          method: delete
+          cors: true
+          request:
+            parameters:
+              paths:
+                username: true
+
+  articles-post:
+    handler: bin/articles-post
+    events:
+      - http:
+          path: articles
+          method: post
+          cors: true
+
+  articles-get:
+    handler: bin/articles-get
+    events:
+      - http:
+          path: articles
+          method: get
+          cors: true
+
+  articles-feed-get:
+    handler: bin/articles-feed-get
+    events:
+      - http:
+          path: articles/feed
+          method: get
+          cors: true
+
+  articles-slug-get:
+    handler: bin/articles-slug-get
+    events:
+      - http:
+          path: articles/{slug}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  articles-slug-put:
+    handler: bin/articles-slug-put
+    events:
+      - http:
+          path: articles/{slug}
+          method: put
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  articles-slug-delete:
+    handler: bin/articles-slug-delete
+    events:
+      - http:
+          path: articles/{slug}
+          method: delete
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  comments-post:
+    handler: bin/comments-post
+    events:
+      - http:
+          path: articles/{slug}/comments
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  comments-get:
+    handler: bin/comments-get
+    events:
+      - http:
+          path: articles/{slug}/comments
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  comments-delete:
+    handler: bin/comments-delete
+    events:
+      - http:
+          path: articles/{slug}/comments/{id}
+          method: delete
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+                id: true
+
+  favorite-post:
+    handler: bin/favorite-post
+    events:
+      - http:
+          path: articles/{slug}/favorite
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  favorite-delete:
+    handler: bin/favorite-delete
+    events:
+      - http:
+          path: articles/{slug}/favorite
+          method: delete
+          cors: true
+          request:
+            parameters:
+              paths:
+                slug: true
+
+  tags-get:
+    handler: bin/tags-get
+    events:
+      - http:
+          path: tags
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    UserTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-user
+        AttributeDefinitions:
+          - AttributeName: Username
+            AttributeType: S
+        KeySchema:  # GET /user, GET /profiles/:username
+          - AttributeName: Username
+            KeyType: HASH
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    EmailUserTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-email-user
+        AttributeDefinitions:
+          - AttributeName: Email
+            AttributeType: S
+        KeySchema:  # POST /users/login
+          - AttributeName: Email
+            KeyType: HASH
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    FollowTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-follow
+        AttributeDefinitions:
+          - AttributeName: Follower
+            AttributeType: S
+          - AttributeName: Publisher
+            AttributeType: S
+        KeySchema:  # GET /articles/feed
+          - AttributeName: Follower
+            KeyType: HASH
+          - AttributeName: Publisher
+            KeyType: RANGE
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    ArticleTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-article
+        AttributeDefinitions:
+          - AttributeName: ArticleId
+            AttributeType: N
+          - AttributeName: CreatedAt
+            AttributeType: N
+          - AttributeName: Dummy
+            AttributeType: N
+          - AttributeName: Author
+            AttributeType: S
+        KeySchema:  # GET /articles/:slug
+          - AttributeName: ArticleId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: CreatedAt
+            KeySchema:  # GET /articles
+              - AttributeName: Dummy
+                KeyType: HASH
+              - AttributeName: CreatedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 2
+              WriteCapacityUnits: 2
+          - IndexName: Author
+            KeySchema:  # GET /articles?author=:author
+              - AttributeName: Author
+                KeyType: HASH
+              - AttributeName: CreatedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 2
+              WriteCapacityUnits: 2
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    ArticleTagTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-article-tag
+        AttributeDefinitions:
+          - AttributeName: Tag
+            AttributeType: S
+          - AttributeName: ArticleId
+            AttributeType: N
+          - AttributeName: CreatedAt
+            AttributeType: N
+        KeySchema:  # POST /articles, PUT /articles
+          - AttributeName: Tag
+            KeyType: HASH
+          - AttributeName: ArticleId
+            KeyType: RANGE
+        LocalSecondaryIndexes:
+          - IndexName: CreatedAt
+            KeySchema:  # GET /articles?tag=:tag
+              - AttributeName: Tag
+                KeyType: HASH
+              - AttributeName: CreatedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    TagTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-tag
+        AttributeDefinitions:
+          - AttributeName: Tag
+            AttributeType: S
+          - AttributeName: ArticleCount
+            AttributeType: N
+          - AttributeName: Dummy
+            AttributeType: N
+        KeySchema:
+          - AttributeName: Tag
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ArticleCount
+            KeySchema:  # GET /tags
+              - AttributeName: Dummy
+                KeyType: HASH
+              - AttributeName: ArticleCount
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 2
+              WriteCapacityUnits: 2
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    FavoriteArticleTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-favorite-article
+        AttributeDefinitions:
+          - AttributeName: Username
+            AttributeType: S
+          - AttributeName: ArticleId
+            AttributeType: N
+          - AttributeName: FavoritedAt
+            AttributeType: N
+        KeySchema:  # POST /articles/:slug/favorite
+          - AttributeName: Username
+            KeyType: HASH
+          - AttributeName: ArticleId
+            KeyType: RANGE
+        LocalSecondaryIndexes:
+          - IndexName: FavoritedAt
+            KeySchema:  # GET /articles?favorited=:favorited
+              - AttributeName: Username
+                KeyType: HASH
+              - AttributeName: FavoritedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2
+
+    CommentTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: realworld-${self:provider.stage}-comment
+        AttributeDefinitions:
+          - AttributeName: ArticleId
+            AttributeType: N
+          - AttributeName: CommentId
+            AttributeType: N
+          - AttributeName: CreatedAt
+            AttributeType: N
+        KeySchema:  # POST /articles/:slug/comments
+          - AttributeName: ArticleId
+            KeyType: HASH
+          - AttributeName: CommentId
+            KeyType: RANGE
+        LocalSecondaryIndexes:
+          - IndexName: CreatedAt
+            KeySchema:  # GET /articles/:slug/comments
+              - AttributeName: ArticleId
+                KeyType: HASH
+              - AttributeName: CreatedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PROVISIONED
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 2

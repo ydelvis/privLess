@@ -1,0 +1,29 @@
+language: node_js
+
+node_js:
+  - lts/*
+
+cache:
+  directories:
+  - node_modules
+
+after_script:
+  - sleep 10
+  - cat ./coverage/lcov.info | npx coveralls
+  - cat .test_output/server.log
+
+before_deploy:
+  - rm -rf gh-pages
+  - mkdir -p gh-pages
+  - npm run build:docs
+  - cp -r ./coverage gh-pages
+  - cp -r ./.test_output gh-pages/test-output
+
+deploy:
+  provider: pages
+  local-dir: gh-pages
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  verbose: true
+  on:
+    branch: master

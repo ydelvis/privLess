@@ -1,0 +1,39 @@
+{
+  "name": "serverless-ci-cd",
+  "version": "1.0.0",
+  "description": "Demo Serverless project using CodeBuild and CodePipeline for CI/CD. Tutorial available at http://www.1strategy.com/blog/.",
+  "main": "handler.js",
+  "scripts": {
+    "test": "jest __tests__/unit/*",
+    "lint": "eslint */*.js",
+    "integration": "jest __tests__/integration/*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1Strategy/serverless-ci-cd.git"
+  },
+  "author": "1Strategy",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/1Strategy/serverless-ci-cd/issues"
+  },
+  "homepage": "https://github.com/1Strategy/serverless-ci-cd#readme",
+  "devDependencies": {
+    "eslint": "^4.9.0",
+    "eslint-config-airbnb": "^16.1.0",
+    "eslint-config-airbnb-base": "^12.1.0",
+    "eslint-plugin-import": "^2.7.0",
+    "eslint-plugin-jest": "^21.5.0",
+    "eslint-plugin-jsx-a11y": "^6.0.3",
+    "eslint-plugin-react": "^7.5.1",
+    "jest": "^22.0.3",
+    "serverless-dynamodb-local": "^0.2.26",
+    "serverless-offline": "^3.16.0",
+    "serverless-stack-output": "^0.2.3",
+    "supertest": "^3.0.0"
+  },
+  "dependencies": {
+    "serverless-dynamodb-client": "0.0.2",
+    "uuid": "^3.1.0"
+  }
+}

@@ -1,0 +1,130 @@
+# NOTE: update this with your service name
+service: grocery-app-api
+
+# Use the serverless-webpack plugin to transpile ES6
+plugins:
+  - serverless-webpack
+  - serverless-offline
+
+# serverless-webpack configuration
+# Enable auto-packing of external modules
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+  region: ap-south-1
+  memorySize: 128 # set the maximum memory of the Lambdas in Megabytes
+  timeout: 30 # the timeout is 10 seconds (default is 6 seconds)
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - cloudformation:DescribeStackResource
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "*"
+  # To load environment variables externally
+  # rename env.example to env.yml and uncomment
+  # the following line. Also, make sure to not
+  # commit your env.yml.
+  #
+  #environment: ${file(env.yml):${self:provider.stage}}
+
+functions:
+  getGrocery:
+    handler: api/groceries/getGrocery.main
+    events:
+      - http:
+          path: grocery
+          method: get
+          cors: true
+  getGroceries:
+    handler: api/groceries/getGroceries.main
+    events:
+      - http:
+          path: groceries
+          method: get
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  updateStock:
+      handler: api/groceries/stock.updateStock
+      events:
+        - http:
+            path: updateStock
+            method: post
+            cors: true
+            authorizer:
+              arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  createCart:
+    handler: api/cart/createCart.main
+    events:
+      - http:
+          path: cart
+          method: post
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  getCart:
+    handler: api/cart/getCart.main
+    events:
+      - http:
+          path: cart
+          method: get
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  getCartWithDetails:
+    handler: api/cart/getCartWithDetails.main
+    events:
+      - http:
+          path: cartDetails
+          method: get
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  createOrder:
+    handler: api/order/createOrder.main
+    events:
+      - http:
+          path: createOrder
+          method: post
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  getUserOrders:
+    handler: api/order/getOrders.main
+    events:
+      - http:
+          path: getOrders
+          method: get
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  cancelOrder:
+    handler: api/order/cancelOrder.main
+    events:
+      - http:
+          path: cancelOrder
+          method: post
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG
+  makePayment:
+    handler: api/pay/makePayment.main
+    events:
+      - http:
+          path: pay
+          method: post
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:ap-south-1:872196253669:userpool/ap-south-1_50ZoISXiG

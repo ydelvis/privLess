@@ -1,0 +1,10 @@
+{
+  "name": "serverless-chaos-demo-nodejs",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "failure-lambda": "^0.4.0"
+  }
+}

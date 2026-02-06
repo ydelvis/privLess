@@ -1,0 +1,52 @@
+service: aws-turn-off-my-account
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: ${opt:stage, 'prod'}
+  timeout: 300
+  memorySize: 256
+  versionFunctions: false
+
+  iamRoleStatements:
+
+  - Effect: Allow
+    Action:
+      - ec2:*
+      - rds:Describe*
+      - rds:List*
+      - rds:Delete*
+      - sqs:Describe*
+      - sqs:List*
+      - sqs:Delete*
+      - elasticloadbalancing:Describe*
+      - elasticloadbalancing:List*
+      - elasticloadbalancing:Delete*
+      - cloudwatch:*
+      - logs:* 
+      - elasticache:*
+    Resource: "*"
+
+  environment:
+    ${file(./configs/${self:provider.stage}.yml)}
+
+package:
+  exclude:
+    - ./**
+    - .git/**
+    - .vscode/**
+    - .test/**
+  include:
+    - ./bin/**
+
+custom:
+  region: ${self:provider.region}
+  stage:  ${opt:stage, self:provider.stage}
+  prefix: ${self:custom.stage}-${self:service}
+
+functions:
+  worker:
+    handler: bin/worker
+    events:
+      - schedule: rate(2 hours)
+      - schedule: cron(0 12 * * ? *)     

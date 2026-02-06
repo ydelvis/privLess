@@ -1,0 +1,45 @@
+{
+  "name": "utsusemi",
+  "version": "0.5.0",
+  "description": "A tool to generate a static website by crawling the original site.",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "npm install && sls deploy -v",
+    "destroy": "sls remove",
+    "test": "nyc --reporter=lcovonly mocha --recursive --require intelli-espower-loader; nyc report",
+    "info": "sls info"
+  },
+  "directories": {
+    "test": "test/"
+  },
+  "keywords": [
+    "crawler"
+  ],
+  "author": "k1LoW <k1lowxb@gmail.com> (https://github.com/k1LoW)",
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^5.2.0",
+    "css": "^2.2.1",
+    "iconv-lite": "^0.4.17",
+    "js-sha256": "^0.6.0",
+    "js-yaml": "^3.8.4",
+    "jschardet": "^1.4.2",
+    "jsdom": "^11.0.0",
+    "moment": "^2.18.1",
+    "request": "^2.81.0",
+    "request-promise-native": "^1.0.4",
+    "serverless": "^1.23.0",
+    "serverless-s3-remover": "^0.4.0",
+    "sleep-promise": "^2.0.0",
+    "uuid": "^3.0.1",
+    "winston": "^2.3.1"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.55.0",
+    "intelli-espower-loader": "^1.0.1",
+    "mocha": "^3.4.2",
+    "nyc": "^11.0.2",
+    "power-assert": "^1.4.2",
+    "octopublish": "^0.5.0"
+  }
+}

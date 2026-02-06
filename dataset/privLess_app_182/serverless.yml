@@ -1,0 +1,108 @@
+service: serverless-url-shortener
+
+provider:
+  name: aws
+  runtime: nodejs4.3
+
+  stage: dev
+  region: eu-west-1
+
+# you can add statements to the Lambda function's IAM Role here
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:*"
+      Resource:
+        Fn::Join:
+          - ""
+          - - "arn:aws:dynamodb:"
+            - "Ref" : "AWS::Region"
+            - ":"
+            - "Ref" : "AWS::AccountId"
+            - ":table/"
+            - "Ref" : "TrackedResourcesTable"
+    - Effect: "Allow"
+      Action:
+        - "dynamodb:*"
+      Resource:
+        Fn::Join:
+          - ""
+          - - "arn:aws:dynamodb:"
+            - "Ref" : "AWS::Region"
+            - ":"
+            - "Ref" : "AWS::AccountId"
+            - ":table/"
+            - "Ref" : "TrackedResourcesTable"
+            - "/index/"
+            - "sls-url-shortener-trackers-${opt:stage}"
+
+package:
+  exclude:
+    - .idea
+    - coverage/**
+    - spec/**
+
+functions:
+  listResource:
+    handler: code/lambda/shortener/list/handler.handler
+    events:
+      - http:
+          path: resource
+          method: get
+
+  deleteResource:
+    handler: code/lambda/shortener/delete/handler.handler
+    events:
+      - http:
+          path: resource/{uuid}
+          method: delete
+
+  createResource:
+    handler: code/lambda/shortener/create/handler.handler
+    events:
+      - http:
+          path: resource
+          method: post
+
+  resolveResource:
+    handler: code/lambda/resolver/get/handler.handler
+    events:
+      - http:
+          path: l/{tracker}
+          method: get
+
+
+# you can add CloudFormation resource templates here
+resources:
+  Resources:
+    TrackedResourcesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: sls-url-shortener-urls-${opt:stage}
+        AttributeDefinitions:
+          - AttributeName: uuid
+            AttributeType: S
+          - AttributeName: tracker
+            AttributeType: S
+        KeySchema:
+          - AttributeName: uuid
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: sls-url-shortener-trackers-${opt:stage}
+            KeySchema:
+              - AttributeName: tracker
+                KeyType: HASH
+            Projection:
+              ProjectionType: "ALL"
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+#  Outputs:
+#    UrlTable:
+#      Description: "Table containing every Url shortened"
+#      Value:
+#        - "Ref" : "urlsTable"

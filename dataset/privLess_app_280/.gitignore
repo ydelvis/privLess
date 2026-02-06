@@ -1,0 +1,6 @@
+.idea
+.serverless
+node_modules
+.DS_Store
+awsProfile.yml
+.env*
