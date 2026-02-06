@@ -1,0 +1,68 @@
+# ============================================================================
+# PrivLess Configuration File
+# ============================================================================
+# All paths are relative to the project root (where this config.yaml lives).
+# Users can override any setting here without modifying source code.
+# ============================================================================
+
+# --- CodeQL Settings ---
+codeql:
+  # Path to the CodeQL executable.
+  # Set to "" or "codeql" to use the system PATH default.
+  # Examples:
+  #   executable: "codeql"
+  #   executable: "/opt/codeql-home/codeql/codeql"
+  executable: "codeql"
+
+# --- Analysis Settings ---
+analysis:
+  # Programming language of the serverless apps to analyze.
+  # Choices: javascript, typescript, python, go, csharp
+  language: "javascript"
+
+  # Path to JSON file containing list of app paths to analyze.
+  # Relative to project root.
+  apps_json: "apps.json"
+
+  # Number of concurrent workers for parallel processing (1-16).
+  workers: 4
+
+  # Resume from a previous run, skipping already processed apps.
+  resume: true
+
+  # Output format for generated policies: "json" or "yaml"
+  output_format: "yaml"
+
+# --- Output Settings ---
+output:
+  # Base output directory for all results.
+  # Relative to project root.
+  dir: "output"
+
+  # Subdirectory names (relative to output.dir)
+  databases_subdir: "databases"
+  results_subdir: "results"
+  policies_subdir: "policies"
+  stats_subdir: "stats"
+  logs_subdir: "logs"
+
+# --- Data Files ---
+data:
+  # IAM service actions mapping file (relative to project root).
+  permission_map: "data/iam_service_actions.json"
+
+# --- Logging ---
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+
+  # Whether to also print logs to console (in addition to log files).
+  console_output: true
+
+  # Log file names (placed inside output.dir/output.logs_subdir/)
+  files:
+    main: "privless.log"
+    codeql: "codeql.log"
+    extractor: "extractor.log"
+    resolver: "resolver.log"
+    policy_generator: "policy_generator.log"
