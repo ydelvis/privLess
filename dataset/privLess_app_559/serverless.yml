@@ -1,0 +1,152 @@
+service: shorty
+
+plugins:
+  - serverless-python-requirements
+  - serverless-wsgi
+  - serverless-dynamodb-local
+  - serverless-finch
+
+custom:
+  tableName: urls-table-${self:provider.stage}
+  wsgi:
+    app: app.app
+    packRequirements: false
+  pythonRequirements:
+    dockerizePip: non-linux
+  dynamodb:
+    start:
+      migrate: true
+    stages:
+      - dev
+  client:
+    bucketName: shorty-frontend-${self:provider.stage}
+    distributionFolder: dist
+  alias: shorty.skghosh.me
+  acmArn: arn:aws:acm:us-east-1:680499645329:certificate/6fbcfddc-3351-47fc-9ebe-f3d88abc444f
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'ap-south-1'}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+      Resource:
+        Fn::GetAtt:
+          - UrlsDynamoDBTable
+          - Arn
+  environment:
+    URLS_TABLE: ${self:custom.tableName}
+
+functions:
+  app:
+    handler: wsgi_handler.handler
+    events:
+      - http: ANY /
+      - http: ANY {proxy+}
+    memorySize: 256
+
+resources:
+  Resources:
+    UrlsDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: slug
+            AttributeType: S
+        KeySchema:
+          - AttributeName: slug
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.tableName}
+
+    CloudfrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Aliases:
+            - ${self:custom.alias}
+          Origins:
+            - DomainName: ${self:custom.client.bucketName}.s3-website.${self:provider.region}.amazonaws.com
+              Id: StaticS3Origin
+              CustomOriginConfig:
+                OriginProtocolPolicy: http-only
+            - DomainName:
+                Fn::Join:
+                  - ''
+                  - - Ref: ApiGatewayRestApi
+                    - '.execute-api.'
+                    - Ref: AWS::Region
+                    - '.amazonaws.com'
+              Id: APIOrigin
+              CustomOriginConfig:
+                OriginProtocolPolicy: https-only
+              OriginPath:
+                Fn::Join:
+                  - ''
+                  - - '/'
+                    - ${self:provider.stage}
+          Enabled: true
+          DefaultCacheBehavior:
+            TargetOriginId: StaticS3Origin
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          CacheBehaviors:
+            - PathPattern: /swagger*
+              TargetOriginId: StaticS3Origin
+              ForwardedValues:
+                QueryString: false
+                Cookies:
+                  Forward: none
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /static*
+              TargetOriginId: StaticS3Origin
+              ForwardedValues:
+                QueryString: false
+                Cookies:
+                  Forward: none
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /api/?*
+              TargetOriginId: APIOrigin
+              ForwardedValues:
+                QueryString: true
+                Headers: [Accept, Referer, Authorization, Content-Type]
+                Cookies:
+                  Forward: none
+              ViewerProtocolPolicy: redirect-to-https
+              AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+              MinTTL: '0'
+              DefaultTTL: '0'
+            - PathPattern: /?*
+              TargetOriginId: APIOrigin
+              ForwardedValues:
+                QueryString: true
+                Headers: [Accept, Referer, Authorization, Content-Type]
+                Cookies:
+                  Forward: none
+              ViewerProtocolPolicy: redirect-to-https
+              AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+              MinTTL: '0'
+              DefaultTTL: '0'
+          ViewerCertificate:
+            AcmCertificateArn: ${self:custom.acmArn}
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2018
+          PriceClass: PriceClass_100
+
+package:
+  exclude:
+    - node_modules/**
+    - venv/**
+    - .idea/**
+    - __pycache__/**
+    - .dynamodb/**

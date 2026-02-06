@@ -1,0 +1,64 @@
+service: map-reduce
+
+provider:
+  name: aws
+  runtime: python3.6
+  memorySize: 1024
+  timeout: 300
+  region: ${env:AWS_REGION}
+  versionFunctions: false
+  environment:
+    MAPREDUCE_SNS_ARN:
+      Ref: SNSMapperTopic
+    REDUCE_RESULTS_BUCKET: "${env:REDUCE_RESULTS_BUCKET}-${env:ENV}"
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:*"
+      Resource:
+        - "arn:aws:s3:::big-data-benchmark"
+        - "arn:aws:s3:::big-data-benchmark/*"
+        - "arn:aws:s3:::brianz-mapreduce-enron-emails"
+        - "arn:aws:s3:::brianz-mapreduce-enron-emails/*"
+        - "arn:aws:s3:::${env:REDUCE_RESULTS_BUCKET}-${env:ENV}"
+        - "arn:aws:s3:::${env:REDUCE_RESULTS_BUCKET}-${env:ENV}/*"
+    - Effect: "Allow"
+      Action:
+        - "sns:*"
+      Resource:
+        Ref: SNSMapperTopic
+
+package:
+  exclude:
+    - .git/**
+    - __pycache__/**
+    - "**/__pycache__/**"
+    - "*.pyc"
+    - "*.swp"
+
+resources:
+  Resources:
+    SNSMapperTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ${env:ENV} notification for mappers
+        TopicName: ${env:ENV}MapReduceMapper
+
+functions:
+  Driver:
+    handler: handler.driver
+  Mapper:
+    handler: handler.mapper
+    events:
+      - sns:
+          topicName: ${env:ENV}MapReduceMapper
+          arn:
+            Ref: SNSMapperTopic
+  Reducer:
+    handler: handler.reducer
+    events:
+      - s3:
+          bucket: brianz-${env:ENV}-mapreduce-results
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: '-done.csv'

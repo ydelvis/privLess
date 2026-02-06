@@ -1,0 +1,17 @@
+lib
+.idea
+shelvery.iml
+*__pycache__*
+nosetests.xml
+MANIFEST
+build
+dist
+shelvery.egg-info
+play.sh
+.serverless
+.noseids
+out.txt
+.pytest_cache
+
+packaged-template.yaml
+/shelvery-aws-backups.iml

@@ -1,0 +1,130 @@
+service: app
+frameworkVersion: "=1.26.1"
+
+custom:
+  stagevars: ${file(stagevars.yml)}
+
+provider:
+  name: aws
+  runtime: python3.6
+  stage: ${opt:stage, 'local'}       # default to 'local', 'dev' is more dangerous
+  region: ${opt:region, self:custom.stagevars.${self:provider.stage}.region} # region should come from stagevars.yml
+  environment:
+    DYNAMODB_UPLOAD_INFO_TABLE: 
+      Ref: uploadsInfoTable
+    UPLOAD_BUCKET_NAME: uploads-info-${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Resource: 
+        "Fn::GetAtt": [uploadsInfoTable, Arn]
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+    - Effect: Allow
+      Resource: arn:aws:s3:::uploads-info-${self:provider.stage}/*
+      Action:
+        - s3:PutObject
+        - s3:PutObjectAcl
+        - s3:PutObjectTagging
+        - s3:DeleteObject
+
+functions:
+  # Events that are not API Gateway
+
+  s3ObjectCreated:
+    description: when S3 object created, put info about it into DynamoDB
+    handler: handler.s3_object_created
+    events:
+      - s3:
+          bucket: uploads-info-${self:provider.stage}
+          event: s3:ObjectCreated:*
+  s3ObjectRemoved:
+    description: when S3 object is removed, remove its DynamoDB entry
+    handler: handler.s3_object_removed
+    events:
+      - s3:
+          bucket: uploads-info-${self:provider.stage}
+          event: s3:ObjectRemoved:*
+
+  # API Gateway events
+  getUploadURL:
+    handler: handler.get_upload_url
+    events:
+      - http:
+          method: get
+          path: /upload_url
+          cors: true
+  getAssets:                    # JSON, or HTML if "Accepts: text/html"
+    description: return all assets or if ?term=TERM only those with matching ids
+    handler: handler.get_assets
+    events:
+      - http:
+          path: /assets
+          method: get
+          # turning on CORS creates in AWS APIG console an OPTIONS resource
+          # but our method must return header Access-Control-Allow-Origin.
+          cors: true
+  getAsset:
+    description: get asset details matching the id from the DDB
+    handler: handler.get_asset
+    events:
+      - http:
+          path: /assets/{id}
+          method: get
+          cors: true
+  putAssetComment:
+    description: update the comments of the asset matching the id
+    handler: handler.put_asset_comment
+    events:
+      - http:
+          path: /assets/{id}
+          method: put
+          cors: true
+  deleteAsset:
+    description: delete the asset matching the id, by nuking the s3 object
+    handler: handler.delete_asset
+    events:
+      - http:
+          path: /assets/{id}
+          method: delete
+          cors: true
+
+resources:
+  Resources:
+    # Don't spec the upload bucket here, the Handler spec will create it
+    uploadsInfoTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: uploads-info-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema: 
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+# plugins:
+#   - serverless-python-requirements
+#   - serverless-finch
+
+# you can add packaging information here
+#package:
+#  include:
+#    - include-me.py
+#    - include-me-dir/**
+#  exclude:
+#    - exclude-me.py
+#    - exclude-me-dir/**
+
+#  Outputs:
+#     NewOutput:
+#       Description: "Description for the output"
+#       Value: "Some output value"

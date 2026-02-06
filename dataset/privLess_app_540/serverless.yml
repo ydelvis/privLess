@@ -1,0 +1,186 @@
+service: openimagegenius-gpu-websockets
+frameworkVersion: "3"
+
+package:
+  patterns:
+    - "!.pytest_cache"
+    - "!__pycache__"
+    - "!manual_dist"
+    - "!node_modules"
+    - "!ws-client"
+    - "!ws-server"
+    - "!.ws_secret_pass"
+    - "!.serverless"
+    - "!.gitignore"
+    - "!package.json"
+    - "!package-lock.json"
+    - "!test_requirements.txt"
+    - "!pytest.ini"
+    - "!test_ws_server.py"
+    - "!.requirements.zip"
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: ${opt:stage}
+  region: eu-central-1
+  websocketsApiName: openimage-websockets-gpus-${self:provider.stage}
+  websocketsApiRouteSelectionExpression: $request.body.message_type # custom routes are selected by the value of the action property in the body
+  websocketsDescription: Serverless Websockets for GPU Nodes
+  environment:
+    # Tables
+    USER_TABLE_NAME: ${self:custom.databaseInfo.userTableName}
+    REQUEST_TABLE_NAME: ${self:custom.databaseInfo.requestTableName}
+    API_TOKEN_TABLE_NAME: ${self:custom.databaseInfo.APITokenTable}
+    CONNECTION_TABLE_NAME: ${self:custom.databaseInfo.connectionTableName}
+    # Indices
+    GOOGLE_USER_ID_INDEX_NAME: ${self:custom.databaseInfo.googleUserIdIndexName}
+    USER_GOOGLE_EMAIL_INDEX_NAME: ${self:custom.databaseInfo.userGoogleEmailIndexName}
+    REQUEST_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.requestUniqueUserIdIndex}
+    REQUEST_STATUS_INDEX: ${self:custom.databaseInfo.requestStatusIndex}
+    API_TOKEN_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.APITokenUniqueUserIdIndex}
+    CONNECTION_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.connectionUniqueUserIdIndex}
+    CONNECTION_IP_ADRESS_INDEX: ${self:custom.databaseInfo.connectionIpAddressIndex}
+
+    # Telegram
+    TELEGRAM_TOKEN: ${ssm:/${self:provider.stage}/telegram/token}
+    TELEGRAM_CHAT_ID: ${ssm:/${self:provider.stage}/telegram/chat_id}
+    # Others
+    AUTHORIZER_STAGE: ${self:provider.stage}
+    API_ID: ${self:custom.apiGatewayId}
+    S3_BUCKET: ${self:custom.generatedImagesBucket}
+    RETRYING_LAMBDA_NAME: ${self:service}-${self:provider.stage}-retryingHandler
+    SQS_REQUEST_URL: https://sqs.${aws:region}.amazonaws.com/${aws:accountId}/image-processing-${self:provider.stage}
+    SQS_CPU_PROCESSING_QUEUE_URL: ${self:custom.sqsCpuProcessingQueueUrl}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "dynamodb:PutItem"
+            - "dynamodb:UpdateItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Query"
+            - "dynamodb:Scan"
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.APITokenTable}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.APITokenTable}/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.requestTableName}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.requestTableName}/index/*"
+        - Effect: Allow
+          Action:
+            - "s3:PutObject"
+          Resource:
+            - "arn:aws:s3:::${self:custom.generatedImagesBucket}/*"
+        - Effect: Allow
+          Action:
+            - "lambda:InvokeFunction"
+          Resource:
+            - "arn:aws:lambda:${aws:region}:${aws:accountId}:function:${self:service}-${self:provider.stage}-retryingHandler"
+        - Effect: Allow
+          Action:
+            - "sqs:SendMessage"
+          Resource:
+            - ${cf:openimagegenius-websockets-api-${self:provider.stage}.ImageProcessingQueue}
+            - ${self:custom.sqsCpuProcessingQueueArn}
+
+functions:
+  connectionHandler:
+    handler: event_handlers.connection
+    events:
+      - websocket:
+          route: $connect
+          authorizer:
+            name: GPUAuthorizer
+            identitySource:
+              - "route.request.header.Authorization"
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  disconnectHandler:
+    handler: event_handlers.disconnect
+    events:
+      - websocket:
+          route: $disconnect
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  GPUAuthorizer:
+    handler: gpu_node_authorizer.handler
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  statusHandler:
+    handler: event_handlers.status
+    events:
+      - websocket:
+          route: status
+
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  retryingHandler:
+    handler: event_handlers.retrying
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    timeout: 300
+
+  defaultHandler:
+    handler: event_handlers.default
+    events:
+      - websocket:
+          route: $default
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  fanoutHandler:
+    handler: fanout_service.handler
+    timeout: 28
+    events:
+      - sqs:
+          arn: ${cf:openimagegenius-websockets-api-${self:provider.stage}.ImageProcessingQueue}
+          batchSize: 1
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  pushHandler:
+    handler: push_service.handler
+    timeout: 10
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - s3:
+          bucket: ${self:custom.generatedImagesBucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .jpg
+          existing: true
+
+plugins:
+  - serverless-domain-manager
+  - serverless-python-requirements
+
+custom:
+  generatedImagesBucket: ${cf:openimagegenius-image-buckets-${self:provider.stage}.GeneratedImagesBucket}
+  sqsCpuProcessingQueueArn: ${cf:openimagegenius-websockets-api-${self:provider.stage}.ImageCPUProcessingQueue}
+  sqsCpuProcessingQueueUrl: ${cf:openimagegenius-websockets-api-${self:provider.stage}.ImageCPUProcessingQueueURL}
+  apiGatewayIdMapping:
+    dev: cwo3f8h30b
+    prod: 3r1ifo4vod
+  apiGatewayId: ${self:custom.apiGatewayIdMapping.${self:provider.stage}}
+  domainName:
+    dev: ${self:provider.stage}.ws-gpus.openimagegenius.com
+    prod: ws-gpus.openimagegenius.com
+  customDomain:
+    domainName: ${self:custom.domainName.${self:provider.stage}}
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+    endpointType: REGIONAL
+    securityPolicy: tls_1_2
+    apiType: websocket
+  pythonRequirements:
+    zip: true
+    layer: true
+    usePipenv: false
+  databaseInfo: ${file(../database/serverless.yml):custom}

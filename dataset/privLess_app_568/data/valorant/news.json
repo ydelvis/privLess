@@ -1,0 +1,92 @@
+[
+  {
+    "locale": "en-US",
+    "title": "News",
+    "description": "We are VALORANT"
+  },
+  {
+    "locale": "en-GB",
+    "title": "News",
+    "description": "We are VALORANT"
+  },
+  {
+    "locale": "de-DE",
+    "title": "Neuigkeiten",
+    "description": "Wir sind VALORANT"
+  },
+  {
+    "locale": "es-ES",
+    "title": "Noticias",
+    "description": "Somos VALORANT"
+  },
+  {
+    "locale": "fr-FR",
+    "title": "Actualités",
+    "description": "Nous sommes VALORANT"
+  },
+  {
+    "locale": "it-IT",
+    "title": "Notizie",
+    "description": "Siamo VALORANT"
+  },
+  {
+    "locale": "pl-PL",
+    "title": "Wiadomości",
+    "description": "Jesteśmy VALORANT"
+  },
+  {
+    "locale": "ru-RU",
+    "title": "Новости",
+    "description": "Мы – VALORANT"
+  },
+  {
+    "locale": "tr-TR",
+    "title": "HABERLER",
+    "description": "BİZİM ADIMIZ VALORANT"
+  },
+  {
+    "locale": "es-MX",
+    "title": "Noticias",
+    "description": "Somos VALORANT"
+  },
+  {
+    "locale": "id-ID",
+    "title": "Berita",
+    "description": "Kami VALORANT"
+  },
+  {
+    "locale": "ja-JP",
+    "title": "News",
+    "description": "We are VALORANT"
+  },
+  {
+    "locale": "ko-KR",
+    "title": "소식",
+    "description": "우리는 발로란트다"
+  },
+  {
+    "locale": "pt-BR",
+    "title": "Notícias",
+    "description": "Nós somos VALORANT"
+  },
+  {
+    "locale": "th-TH",
+    "title": "ข่าวสาร",
+    "description": "พวกเราคือ VALORANT"
+  },
+  {
+    "locale": "vi-VN",
+    "title": "Tin tức",
+    "description": "Chúng tôi là VALORANT"
+  },
+  {
+    "locale": "zh-TW",
+    "title": "最新消息",
+    "description": "我們是 《特戰英豪》"
+  },
+  {
+    "locale": "ar-AE",
+    "title": "الأخبار",
+    "description": "نحن VALORANT"
+  }
+]

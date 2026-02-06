@@ -54,20 +54,22 @@ pip install -r requirements.txt
    python privLess.py
    ```
 
-### Testing with the Case Study App
+## Testing with the Case Study App
 
-A sample serverless application is included for testing:
+A sample Node.js serverless application (`case-study-app/aws-node-http-api-dynamodb-local`) is included for testing. To run PrivLess against it:
 
 ```bash
-# Create an apps list pointing to the case study app
+# 1. Create an apps list pointing to the case study app
 echo '["case-study-app/aws-node-http-api-dynamodb-local"]' > apps.json
 
-# Run analysis on it
+# 2. Run the analysis
 cd src
-python privLess.py --language javascript --apps-json apps.json
+python privLess.py --language javascript --apps-json ../apps.json
 ```
 
-### Bulk Analysis of the Dataset
+The generated policy will be written to `output/results/policies/javascript/` and logs to `output/logs/`.
+
+## Bulk Analysis of the Dataset
 
 The `dataset/` directory contains 600 serverless applications. To analyze them in bulk, first generate per-language app lists using the helper script:
 

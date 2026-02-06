@@ -1,0 +1,254 @@
+service: openimagegenius-websockets-api
+
+frameworkVersion: "3"
+
+package:
+  patterns:
+    - "!manual_dist"
+    - "!node_modules/**"
+    - "!ws-client"
+    - "!ws-server"
+    - "!.ws_secret_pass"
+    - "!.serverless"
+    - "!.gitignore"
+    - "!package.json"
+    - "!package-lock.json"
+    - "!test_requirements.txt"
+    - "!pytest.ini"
+    - "test_ws_server.py"
+    - "!.requirements.zip"
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: ${opt:stage}
+  region: eu-central-1
+  websocketsApiName: openimage-websockets-api-${self:provider.stage}
+  websocketsApiRouteSelectionExpression: $request.body.action # custom routes are selected by the value of the action property in the body
+  websocketsDescription: Serverless Websockets for Using Facing API
+  environment:
+    # Tables
+    USER_TABLE_NAME: ${self:custom.databaseInfo.userTableName}
+    REQUEST_TABLE_NAME: ${self:custom.databaseInfo.requestTableName}
+    API_TOKEN_TABLE_NAME: ${self:custom.databaseInfo.APITokenTable}
+    CONNECTION_TABLE_NAME: ${self:custom.databaseInfo.connectionTableName}
+    # Indices
+    GOOGLE_USER_ID_INDEX_NAME: ${self:custom.databaseInfo.googleUserIdIndexName}
+    USER_GOOGLE_EMAIL_INDEX_NAME: ${self:custom.databaseInfo.userGoogleEmailIndexName}
+    REQUEST_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.requestUniqueUserIdIndex}
+    REQUEST_STATUS_INDEX: ${self:custom.databaseInfo.requestStatusIndex}
+    API_TOKEN_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.APITokenUniqueUserIdIndex}
+    CONNECTION_UNIQUE_USER_ID_INDEX: ${self:custom.databaseInfo.connectionUniqueUserIdIndex}
+    CONNECTION_IP_ADRESS_INDEX: ${self:custom.databaseInfo.connectionIpAddressIndex}
+
+    # Telegram
+    TELEGRAM_TOKEN: ${ssm:/${self:provider.stage}/telegram/token}
+    TELEGRAM_CHAT_ID: ${ssm:/${self:provider.stage}/telegram/chat_id}
+
+    # REDIS
+    REDIS_URL: ${ssm:/${self:provider.stage}/redis/url}
+    REDIS_TOKEN: ${ssm:/${self:provider.stage}/redis/token}
+    REDIS_PREFIX: ${ssm:/${self:provider.stage}/redis/prefix}
+
+    REDIS_LIMIT: 20
+    REDIS_PERIOD: 60
+
+    # Others
+    SQS_REQUEST_URL: ${self:custom.imageProcessingQueueUrl}
+    AUTHORIZER_STAGE: ${self:provider.stage}
+    API_ID: ${self:custom.apiGatewayId}
+    GOOGLE_OAUTH_APP_ID: ${self:custom.googleOAuthAppID}
+
+    DEVELOPER_GOOGLE_USER_ID: ${ssm:/dev/develop-google-user-id} # Only exists in dev stage
+    WS_SECRET_PASS: ${ssm:/dev/websockets-api/admin-creds} # Only exists in dev stage
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - "dynamodb:PutItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Query"
+            - "dynamodb:UpdateItem"
+            - "dynamodb:ListStreams"
+            - "dynamodb:DescribeTable"
+            - "dynamodb:DeleteItem"
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.requestTableName}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.requestTableName}/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.userTableName}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.userTableName}/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.connectionTableName}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.databaseInfo.connectionTableName}/index/*"
+        - Effect: Allow
+          Action:
+            - "sqs:SendMessage"
+          Resource:
+            - "arn:aws:sqs:${self:provider.region}:*:${self:custom.imageProcessingQueueName}"
+            - "arn:aws:sqs:${self:provider.region}:*:${self:custom.imageCPUProcessingQueueName}"
+
+functions:
+  connectionHandler:
+    handler: event_handlers.connect
+    events:
+      - websocket:
+          route: $connect
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    environment:
+      REDIS_LIMIT: 10
+      REDIS_PERIOD: 300
+
+  disconnectHandler:
+    handler: event_handlers.disconnect
+    events:
+      - websocket:
+          route: $disconnect
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  authorizationHandler:
+    handler: event_handlers.authorization
+    events:
+      - websocket:
+          route: authorize
+          routeResponseSelectionExpression: $default
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    environment:
+      REDIS_LIMIT: 10
+      REDIS_PERIOD: 300
+
+  defaultHandler:
+    handler: event_handlers.default
+    events:
+      - websocket: $default #simple event definition without extra route property
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+
+  requestHandler:
+    handler: event_handlers.request
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - websocket:
+          route: request
+          routeResponseSelectionExpression: $default
+    environment:
+      REDIS_LIMIT: 60
+      REDIS_PERIOD: 60
+
+  databaseUpdateHandler:
+    handler: event_handlers.update
+    timeout: 30
+    layers:
+      - Ref: PythonRequirementsLambdaLayer
+    events:
+      - stream:
+          type: dynamodb
+          arn: ${cf:openimagegenius-database-${self:provider.stage}.RequestTableStreamArn}
+          batchSize: 1
+          filterPatterns:
+            - eventName: [MODIFY]
+              dynamodb:
+                NewImage:
+                  request_status:
+                    S: [completed]
+            - eventName: [MODIFY]
+              dynamodb:
+                NewImage:
+                  request_status:
+                    S: [lambda_scheduled]
+            - eventName: [MODIFY]
+              dynamodb:
+                NewImage:
+                  request_status:
+                    S: [failed]
+
+plugins:
+  - serverless-domain-manager
+  - serverless-python-requirements
+
+custom:
+  imageCPUProcessingQueueName: image-cpu-processing-${self:provider.stage}
+  imageCPUProcessingQueueUrl: !Ref ImageCPUProcessingQueue
+  imageProcessingQueueName: image-processing-${self:provider.stage}
+  imageProcessingQueueUrl: !Ref ImageProcessingQueue
+  apiGatewayIdMapping:
+    dev: 93a3t6qore
+    prod: 7lbivoro5h
+  apiGatewayId: ${self:custom.apiGatewayIdMapping.${self:provider.stage}}
+  domainName:
+    dev: ${self:provider.stage}.ws-api.openimagegenius.com
+    prod: ws-api.openimagegenius.com
+  customDomain:
+    domainName: ${self:custom.domainName.${self:provider.stage}}
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+    endpointType: REGIONAL
+    securityPolicy: tls_1_2
+    apiType: websocket
+  pythonRequirements:
+    zip: true
+    layer: true
+    usePipenv: false
+  databaseInfo: ${file(../database/serverless.yml):custom}
+  OAuthAppIDMapping:
+    dev: ${ssm:/dev/google-oauth-app-id}
+    prod: ${ssm:/prod/google-oauth-app-id}
+  googleOAuthAppID: ${self:custom.OAuthAppIDMapping.${self:provider.stage}}
+
+resources:
+  Resources:
+    ImageProcessingQueueDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        DelaySeconds: 0
+        QueueName: image-processing-dead-letter-queue-${self:provider.stage}
+        VisibilityTimeout: 30
+
+    ImageProcessingQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        DelaySeconds: 0
+        QueueName: ${self:custom.imageProcessingQueueName}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt ImageProcessingQueueDLQ.Arn
+          maxReceiveCount: 1
+        VisibilityTimeout: 30
+
+    ImageCPUProcessingQueueDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        DelaySeconds: 0
+        QueueName: image-cpu-processing-dead-letter-queue-${self:provider.stage}
+        VisibilityTimeout: 30
+
+    ImageCPUProcessingQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        DelaySeconds: 0
+        QueueName: ${self:custom.imageCPUProcessingQueueName}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt ImageCPUProcessingQueueDLQ.Arn
+          maxReceiveCount: 1
+        VisibilityTimeout: 300 # CPU takes longer ;)
+
+  Outputs:
+    ImageProcessingQueue:
+      Export:
+        Name: image-processing-queue-${self:provider.stage}-arn
+      Value:
+        Fn::GetAtt: ImageProcessingQueue.Arn
+
+    ImageCPUProcessingQueue:
+      Export:
+        Name: image-cpu-processing-queue-${self:provider.stage}-arn
+      Value:
+        Fn::GetAtt: ImageCPUProcessingQueue.Arn
+
+    ImageCPUProcessingQueueURL:
+      Export:
+        Name: image-cpu-processing-queue-${self:provider.stage}-url
+      Value: !Ref ImageCPUProcessingQueue

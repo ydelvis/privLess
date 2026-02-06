@@ -1,0 +1,42 @@
+service: sentinel-tiler
+
+provider:
+  name: aws
+  runtime: python3.6
+  stage: ${opt:stage, 'production'}
+  region: eu-central-1
+  iamRoleStatements:
+  -  Effect: "Allow"
+     Action:
+       - "s3:ListBucket"
+       - "s3:GetObject"
+     Resource:
+       - "arn:aws:s3:::sentinel-s2-l1c*"
+  environment: ${file(./Dockerfiles/${opt:type}.yml):env}
+  #Optional Bucket where you store your lambda package
+  # deploymentBucket: {YOUR BUCKET}
+
+custom:
+  apigwBinary:
+    types:
+      - '*/*'
+  contentEncoding:
+    minimumCompressionSize: 0
+
+plugins:
+  - serverless-content-encoding
+  - serverless-apigw-binary
+
+package:
+  artifact: ${file(./Dockerfiles/${opt:type}.yml):artifact}
+
+functions:
+  sentinel-tiler:
+    handler: app.sentinel.APP
+    memorySize: 1536
+    timeout: 20
+    events:
+      - http:
+          path: sentinel/{proxy+}
+          method: get
+          cors: true

@@ -1,0 +1,84 @@
+service: python-tracer-component-test
+
+custom:
+  env: ${opt:env, env:USER}
+
+provider:
+    name: aws
+    runtime: python3.9
+    memorySize: 256
+    timeout: 60
+    region: us-west-2
+    stage: ${self:custom.env}
+    iamRoleStatements:
+        - Effect: "Allow"
+          Action:
+              - "lambda:InvokeFunction"
+              - "lambda:InvokeAsync"
+              - "sns:Publish"
+              - "ses:Send*"
+              - "dynamodb:PutItem"
+              - "dynamodb:Scan"
+              - "dynamodb:CreateTable"
+              - "dynamodb:DeleteTable"
+              - "dynamodb:DescribeTable"
+              - "s3:PutObject"
+              - "s3:CreateBucket"
+              - "s3:ListBucket"
+              - "s3:DeleteObject"
+              - "s3:DeleteBucket"
+              - "ssm:PutParameter"
+              - "ssm:DeleteParameter"
+              - "ssm:GetParameter"
+              - "iot:Publish"
+              - "iot:CreateThing"
+              - "iot:DescribeEndpoint"
+              - "iot:DeleteThing"
+              - "kinesis:PutRecord"
+
+          Resource:
+              - "*"
+package:
+    individually: true # package each lambda's code individually
+functions:
+    lambda_to_invoke:
+        handler: component/serverless/handler.handler
+        name: component-test
+        package:
+            include:
+                - handler.py
+
+    
+        
+resources:
+  Description: "Resources used by the component tests of the python tracer"
+  Resources:
+    ComponentTestTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: Misc errors topic
+        TopicName: component-test
+    ComponentTestTable:
+        Type: AWS::DynamoDB::Table
+        Properties:
+          TableName: component-test
+          AttributeDefinitions:
+            - AttributeName: key
+              AttributeType: S
+          KeySchema:
+            - AttributeName: key
+              KeyType: HASH
+          BillingMode: PAY_PER_REQUEST
+    ComponentTestKinesis:
+      Type: AWS::Kinesis::Stream
+      Properties:
+        ShardCount: 1
+        Name: component-test
+    ComponentTestSqs:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: component-test
+    ComponentTestS3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-${self:provider.stage}-s3-bucket

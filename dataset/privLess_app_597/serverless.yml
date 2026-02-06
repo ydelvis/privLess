@@ -1,0 +1,79 @@
+service: imgur-clone-functions
+
+frameworkVersion: ">=1.1.0 <2.0.0"
+
+custom:
+  bucket: imgur-serverless-v2
+  table: img-posts
+
+provider:
+  name: aws
+  runtime: python3.6
+  region: eu-west-1
+  iamRoleStatements: # permissions for all of your functions can be set here
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - S3:PutObjectAcl
+      Resource: "arn:aws:s3:::${self:custom.bucket}/*"
+    - Effect: Allow
+      Action:
+        - rekognition:*
+        - lambda:InvokeFunction
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+      Resource: "*"
+
+functions:
+  uploadjs:
+    handler: getSignedUpload.requestUploadURL
+    runtime: nodejs6.10
+    environment:
+      BUCKET: ${self:custom.bucket}
+    events:
+      - http:
+          path: upload-node
+          method: post
+          cors: true
+          authorizer:
+            arn: arn:aws:cognito-idp:eu-west-1:853957954650:userpool/eu-west-1_9IBAarCx9
+            identitySource: method.request.header.Authorization
+            type: token
+
+  list:
+    handler: list.list
+    environment:
+      BUCKET: ${self:custom.bucket}
+      TABLE: ${self:custom.table}
+    events:
+      - http:
+          path: list
+          method: get
+          cors: true
+
+  single:
+    handler: single.single
+    events:
+      - http:
+          path: single
+          method: get
+          cors: true
+
+  tagNewImage:
+    handler: tagNewImage.tagImage
+    environment:
+      TABLE: ${self:custom.table}
+      BUCKET: ${self:custom.bucket}
+    events:
+      - s3:
+          bucket: ${self:custom.bucket}
+          events: s3:ObjectCreated:*
+
+  generateThumbnail:
+    handler: thumbnail.generate
+    events:
+      # - s3:
+      #     bucket: ${self:custom.bucket}
+      #     event: s3:ObjectCreated:*

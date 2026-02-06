@@ -1,0 +1,347 @@
+service: sqsbrowserevents
+
+provider:
+  name: aws
+  runtime: python2.7
+  deploymentBucket: ${opt:region}-reuters-serverless-artifactory
+  stage: ${opt:env}
+  defPoolName: "sqs_browser"
+  defVersion: "0.0.0"
+  defCognitoRegion: ""
+  cfLogs: true
+  region: ${opt:region}
+  stackTags:
+    application: sqs-browser-events
+    environment: ${opt:env}
+    release-tag: ${self:custom.version}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:DescribeTable
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:GetRecords
+        - dynamodb:BatchWriteItem
+        - dynamodb:GetShardIterator
+        - dynamodb:DescribeStream
+        - dynamodb:ListStreams
+      Resource:
+        - "arn:aws:dynamodb:${self:custom.region}:*:table/${self:custom.sessionTable}*"
+        - "arn:aws:dynamodb:${self:custom.region}:*:table/${self:custom.historyTable}*"
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: "arn:aws:logs:*:*:*"
+    - Effect: Allow
+      Action:
+        - lambda:*
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - kinesis:GetRecords
+        - kinesis:GetShardIterator
+        - kinesis:DescribeStream
+        - kinesis:ListStreams
+        - kinesis:PutRecord
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - cognito-identity:*
+      Resource: "*"
+    - Effect: Allow
+      Action:
+        - sqs:*
+      Resource: "*"
+  environment:
+    COGNITO_REGION: ${self:custom.cognitoRegion}
+    SESSION_TABLE: ${self:custom.sessionTable}
+    SESSION_TABLE_ACCOUNT_GSI: ${self:custom.sessionTable}-gsi-account
+    COGNITO_IDENTITY_POOL: ${self:custom.cognitoPoolName}
+    SQS_QUEUE_PREFIX: ${self:custom.sqsQueuePrefix}
+    HISTORY_TABLE: ${self:custom.historyTable}
+    SQS_SENDER_LAMBDA: ${self:custom.sqsSender}
+    DISPATCHER_LAMBDA: ${self:custom.eventDispatcher}
+    DISPATCHER_BATCH_SIZE: 20
+    MAX_MSG_LIST_LENGTH: 50
+    SQS_MESSAGE_RETENTION_PERIOD: 3600
+    SESSION_TTL: 3600
+    USER_MESSAGE_TTL: 86400
+    USER_HISTORY_ADDER_LAMBDA: ${self:custom.userHistoryAdder}
+    SEND_READ_RECEIPTS_VIA_SQS: 1
+    EVENT_STREAM: ${self:custom.browserEventStream}
+    READ_RECEIPT_ADDER_CHUNK_SIZE: 50
+  include:
+    - lib/**
+custom:
+  cognitoRegion: ${opt:cognito-region, self:provider.defCognitoRegion}
+  version: ${opt:version, self:provider.defVersion}
+  region: ${opt:region}
+  sqsQueuePrefix: cognito-sqs-${opt:env}
+  sessionTable: ${opt:env}-sqs-browser-sessions
+  browserEventStream: ${opt:env}-sqs-browser-event-stream
+  historyTable: ${opt:env}-sqs-browser-messages
+  # function names
+  sqsSender: ${opt:env}-sqs-browser-sender
+  userHistoryAdder: ${opt:env}-sqs-browser-user-hist-adder
+  eventDispatcher: ${opt:env}-sqs-browser-event-dispatcher
+  sessionUpdateProcessor: ${opt:env}-sqs-browser-session-updates
+  sessionManagerAPI: ${opt:env}-sqs-browser-session-manager-api
+  userMessageAPI: ${opt:env}-sqs-browser-user-messages
+  cognitoPoolName: ${opt:poolname, self:provider.defPoolName}
+functions:
+  SessionUpdateProcessor:
+    handler: session_update.lambda_handler
+    name: ${self:custom.sessionUpdateProcessor}
+    memorySize: 128
+    timeout: 300
+    description: Listen for changes from the session table, and remove unused SQS queues, version ${self:custom.version}
+    events:
+      - stream:
+          type: dynamodb
+          batchSize: 100
+          arn:
+            Fn::GetAtt:
+              - sessionTable
+              - StreamArn
+  SessionManagerAPI:
+    handler: session_manager.api_gateway_handler
+    name: ${self:custom.sessionManagerAPI}
+    memorySize: 512
+    timeout: 55
+    description: API Gateway for session creation, removal, version ${self:custom.version}
+    events:
+      - http:
+          method: get
+          path: /create/{accountId}/{userId}/{sessionId}
+      - http:
+          method: get
+          path: /destroy/{accountId}/{userId}/{sessionId}
+      - http:
+          method: get
+          path: /renew/{accountId}/{userId}/{sessionId}
+      - http:
+          method: get
+          path: /status/{accountId}/{userId}/{sessionId}
+      - http:
+          method: get
+          path: /status
+      - http:
+          method: get
+          path: /cleanup
+  SQSSender:
+    handler: sqs_sender.lambda_handler
+    name: ${self:custom.sqsSender}
+    memorySize: 128
+    timeout: 300
+    description: send a batch of messages to SQS queues, version ${self:custom.version}
+  UserHistoryAdder:
+    handler: user_history_adder.lambda_handler
+    name: ${self:custom.userHistoryAdder}
+    memorySize: 256
+    timeout: 300
+    description: add batch of user history entries to DynamoDB, version ${self:custom.version}
+  EventDispatcher:
+    handler: dispatcher.lambda_handler
+    name: ${self:custom.eventDispatcher}
+    memorySize: 512
+    timeout: 300
+    description: dispatch user messsages, invoke directly or via Kinesis stream, version ${self:custom.version}  
+    events:
+      - stream:
+          type: kinesis
+          batchSize: 5
+          arn:
+            Fn::GetAtt:
+              - browserEventStream
+              - Arn
+  UserMessageAPI:
+    handler: user_message_api.api_gateway_handler
+    name: ${self:custom.userMessageAPI}
+    memorySize: 512
+    timeout: 300
+    description: respond to queries about user messages, version ${self:custom.version}
+    events:
+      - http:
+          method: get
+          path: /messages/user/{userId}
+      - http:
+          method: get
+          path: /messages/set-read/user/{userId}/message/{messageId}
+      - http:
+          method: post
+          path: /messages/set-read/user/{userId}
+      - http:
+          method: get
+          path: /messages/set-read/user/{userId}/asof/{tstamp}
+  DispatcherAPI:
+    handler: dispatcher.api_gateway_handler
+    name: ${opt:env}-sqs-browser-dispatcher-api
+    memorySize: 256
+    timeout: 300
+    description: dispatch user messsages, version ${self:custom.version}
+    events:
+      - http:
+          method: get
+          path: /notify
+      - http:
+          method: get
+          path: /notify/account/{accountId}
+      - http:
+          method: get
+          path: /notify/user/{userId}/session/{sessionId}
+      - http:
+          method: get
+          path: /notify/user/{userId}
+resources:
+  Resources:
+    ApiGatewayMethodCreateAccountidVarUseridVarSessionidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodMessagesUserUseridVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodDestroyAccountidVarUseridVarSessionidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodRenewAccountidVarUseridVarSessionidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodStatusAccountidVarUseridVarSessionidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodStatusGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodCleanupGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodNotifyGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodNotifyAccountAccountidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodNotifyUserUseridVarSessionSessionidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodNotifyUserUseridVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    ApiGatewayMethodMessagesSetDashreadUserUseridVarMessageMessageidVarGet:
+      Properties:
+        AuthorizationType: AWS_IAM
+    browserEventStream:
+      Type: AWS::Kinesis::Stream
+      DeletionPolicy: Retain
+      Properties:
+        Name: ${self:custom.browserEventStream}
+        ShardCount: 10
+    noticeHistoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.historyTable}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: N
+          - AttributeName: messageId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: messageId
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5        
+    sessionTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.sessionTable}
+        AttributeDefinitions:
+          - AttributeName: accountId
+            AttributeType: N
+          - AttributeName: sessionId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: N
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: sessionId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:custom.sessionTable}-gsi-account
+            KeySchema:
+              - AttributeName: accountId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 5
+              WriteCapacityUnits: 5
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+    sessionManagerAPIErrorMetricFilter:
+      Type: "AWS::Logs::MetricFilter"
+      Properties:
+        LogGroupName:
+          Ref: SessionManagerAPILogGroup
+        FilterPattern: "[ERROR]"
+        MetricTransformations:
+          -
+            MetricValue: "1"
+            MetricNamespace: "${opt:env}-SQSBrowser"
+            MetricName: "ErrorCount"
+    userMessageAPIErrorMetricFilter:
+      Type: "AWS::Logs::MetricFilter"
+      Properties:
+        LogGroupName:
+          Ref: UserMessageAPILogGroup
+        FilterPattern: "[ERROR]"
+        MetricTransformations:
+          -
+            MetricValue: "1"
+            MetricNamespace: "${opt:env}-SQSBrowser"
+            MetricName: "ErrorCount"            
+    sqsSenderErrorMetricFilter:
+      Type: "AWS::Logs::MetricFilter"
+      Properties:
+        LogGroupName:
+          Ref: SQSSenderLogGroup
+        FilterPattern: "[ERROR]"
+        MetricTransformations:
+          -
+            MetricValue: "1"
+            MetricNamespace: "${opt:env}-SQSBrowser"
+            MetricName: "ErrorCount"
+    userHistoryAdderErrorMetricFilter:
+      Type: "AWS::Logs::MetricFilter"
+      Properties:
+        LogGroupName:
+          Ref: UserHistoryAdderLogGroup
+        FilterPattern: "[ERROR]"
+        MetricTransformations:
+          -
+            MetricValue: "1"
+            MetricNamespace: "${opt:env}-SQSBrowser"
+            MetricName: "ErrorCount"
+    eventDispatcherErrorMetricFilter:
+      Type: "AWS::Logs::MetricFilter"
+      Properties:
+        LogGroupName:
+          Ref: EventDispatcherLogGroup
+        FilterPattern: "[ERROR]"
+        MetricTransformations:
+          -
+            MetricValue: "1"
+            MetricNamespace: "${opt:env}-SQSBrowser"
+            MetricName: "ErrorCount"

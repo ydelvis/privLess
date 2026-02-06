@@ -1,0 +1,117 @@
+service: aws-scheduler-v2
+
+provider:
+  name: aws
+  runtime: python3.7
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    STAGE: "${self:provider.stage}"
+  tags:
+    department: research
+    project: aws-scheduler
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:DeleteItem
+        - dynamodb:PutItem
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:GetItem
+        - dynamodb:GetShardIterator
+      Resource:
+        - "${self:custom.table.arn}"
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource: { "Fn::Join": [":", ["arn:aws:lambda:${self:provider.region}", { "Ref": "AWS::AccountId" }, "function", "${self:custom.scheduleFunction}" ] ]  }
+    - Effect: Allow
+      Action:
+        - SQS:SendMessage
+      Resource:
+      - "${self:custom.queue.arn}"
+    - Effect: Allow
+      Action:
+        - cloudwatch:PutMetricData
+      Resource: "*"
+
+custom:
+  # lumigo:
+  #   token: t_e74a5589b5524099bdc04
+  inbound:
+    name: "scheduler-input-v2-${self:provider.stage}"
+    arn: { "Fn::Join": [":", ["arn:aws:sns:${self:provider.region}", { "Ref": "AWS::AccountId" }, "${self:custom.inbound.name}" ] ]  }
+  queue:
+    name: "scheduler-queue-v2-${self:provider.stage}"
+    arn: { "Fn::Join": [":", ["arn:aws:sqs:${self:provider.region}", { "Ref": "AWS::AccountId" }, "${self:custom.queue.name}" ] ]  }
+    url: { "Fn::Join": ["/", ["https://sqs.${self:provider.region}.amazonaws.com", { "Ref": "AWS::AccountId" }, "${self:custom.queue.name}" ] ]  }
+  table:
+    arn: { "Fn::Join": [":", ["arn:aws:dynamodb:${self:provider.region}", { "Ref": "AWS::AccountId" }, "table/aws-scheduler-events-v2-${self:provider.stage}" ] ]  }
+  scheduleFunction: "aws-scheduler-v2-${self:provider.stage}-scheduler"
+  pythonRequirements:
+    pythonBin: python3
+
+functions:
+  consumer:
+    handler: handler.consumer
+    events:
+      - sns:
+          arn:
+            Fn::Join:
+              - ':'
+              - - 'arn:aws:sns'
+                - Ref: 'AWS::Region'
+                - Ref: 'AWS::AccountId'
+                - "${self:custom.inbound.name}"
+          topicName: "${self:custom.inbound.name}"
+    environment:
+      ENFORCE_USER: true
+      QUEUE_URL: "${self:custom.queue.url}"
+    tags:
+      resource: aws-scheduler-consumer
+
+  eventLoader:
+    handler: handler.event_loader
+    events:
+      - schedule: rate(1 minute)
+    environment:
+      SCHEDULE_FUNCTION: "${self:custom.scheduleFunction}"
+    # when we have to wait for DynamoDB autoscaling we may exceed the default of 6s
+    timeout: 30
+    tags:
+      resource: aws-scheduler-event-loader
+
+  scheduler:
+    handler: handler.scheduler
+    environment:
+      QUEUE_URL: "${self:custom.queue.url}"
+    # when we have to wait for DynamoDB autoscaling we may exceed the default of 6s
+    timeout: 30
+    tags:
+      resource: aws-scheduler-scheduler
+
+  emitter:
+    handler: handler.emitter
+    events:
+      - sqs:
+          arn:
+            Fn::Join:
+              - ':'
+              - - arn
+                - aws
+                - sqs
+                - Ref: AWS::Region
+                - Ref: AWS::AccountId
+                - "${self:custom.queue.name}"
+    timeout: 20
+    tags:
+      resource: aws-scheduler-emitter
+
+plugins:
+  - serverless-python-requirements
+
+package:
+  exclude:
+    - venv/**
+    - node_modules/**
