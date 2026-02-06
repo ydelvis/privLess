@@ -60,11 +60,34 @@ A sample serverless application is included for testing:
 
 ```bash
 # Create an apps list pointing to the case study app
-echo '["../case-study-app/aws-node-http-api-dynamodb-local"]' > ../apps.json
+echo '["case-study-app/aws-node-http-api-dynamodb-local"]' > apps.json
 
 # Run analysis on it
 cd src
-python privLess.py --language javascript --apps-json ../apps.json
+python privLess.py --language javascript --apps-json apps.json
+```
+
+### Bulk Analysis of the Dataset
+
+The `dataset/` directory contains 600 serverless applications. To analyze them in bulk, first generate per-language app lists using the helper script:
+
+```bash
+python scripts/generate_apps_json.py
+```
+
+This scans every app's `serverless.yml` for its `runtime` field and produces:
+
+- `apps_javascript.json` - all Node.js apps
+- `apps_python.json` - all Python apps
+- `apps_go.json` - all Go apps
+
+Then run PrivLess against a language group:
+
+```bash
+cd src
+python privLess.py --language javascript --apps-json ../apps_javascript.json
+python privLess.py --language python --apps-json ../apps_python.json
+python privLess.py --language go --apps-json ../apps_go.json
 ```
 
 ## Configuration
@@ -224,7 +247,10 @@ privLess/
       log.py                   # Logging setup
       codeql_agent.py          # CodeQL CLI wrapper
       postprocess_truncated_values.py  # Source value extraction
+  scripts/
+    generate_apps_json.py      # Generates per-language app lists from dataset/
   case-study-app/              # Sample serverless app for testing
+  dataset/                     # Collection of serverless apps for bulk analysis
 ```
 
 ## Logging
