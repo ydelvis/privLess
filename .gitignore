@@ -62,4 +62,6 @@ grasp/
 *.pyc
 __pycache__/
 
-dataset/
+#dataset/
+#analysis/
+analysis/
