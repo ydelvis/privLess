@@ -1,0 +1,7 @@
+---
+library: false
+warnOnImplicitThis: false
+name: privilege-analyzer/queries-js-ts
+version: 1.0.0
+dependencies:
+  codeql/javascript-all: ^2.6.20

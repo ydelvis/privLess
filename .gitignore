@@ -62,4 +62,4 @@ grasp/
 *.pyc
 __pycache__/
 
-00_privLess/
+dataset/

@@ -1,0 +1,7 @@
+---
+library: false
+warnOnImplicitThis: false
+name: privilege-analyzer/queries-python
+version: 0.0.1
+dependencies:
+  codeql/python-all: ^5.0.4
