@@ -2,7 +2,7 @@
 
 **Least-privilege IAM policy generator for serverless applications.**
 
-PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract AWS service calls from serverless application source code and generates minimal IAM policies scoped to only the permissions each function actually needs.
+PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract the AWS permissions each serverless function actually uses and generates tightly-scoped IAM policies, enabling over-privilege analysis of serverless applications.
 
 ## Supported Languages
 
@@ -68,7 +68,7 @@ The components are designed to run in the following order:
 
 ### 1. Run the PrivLess pipeline (`src/`)
 
-The core analysis engine. Uses CodeQL to extract AWS service calls from source code and generates least-privilege IAM policies.
+The core analysis engine. Uses CodeQL to extract AWS service calls from source code and generates tightly-scoped IAM policies based on actual code usage.
 
 ```bash
 cd src
@@ -81,7 +81,7 @@ See [src/README.md](src/README.md) for full CLI reference and examples.
 
 ### 2. Run the Default Policy Analyzer (`tools/default_policy_analyzer/`)
 
-Extracts the IAM policies developers originally declared in their `serverless.yml` files. Used to compare default privileges against the least-privilege policies from step 1.
+Extracts the IAM policies developers originally declared in their `serverless.yml` files. Used to compare default privileges against the usage-based policies from step 1 and quantify over-privilege.
 
 ```bash
 python tools/default_policy_analyzer/privLess_default_policy_analyzer.py \

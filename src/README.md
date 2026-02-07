@@ -1,6 +1,6 @@
 # PrivLess Core Pipeline
 
-The core analysis engine that uses CodeQL to extract AWS service calls from serverless application source code and generates least-privilege IAM policies.
+The core analysis engine that uses CodeQL to extract AWS service calls from serverless application source code and generates tightly-scoped IAM policies based on actual code usage, enabling over-privilege analysis.
 
 ## How It Works
 
@@ -114,6 +114,52 @@ python privLess.py --language javascript --apps-json ../apps.json
 ```
 
 The generated policy will appear at `output/results/policies/javascript/aws-node-http-api-dynamodb-local_policy.yml`.
+
+## Bulk Analysis of the Dataset
+
+The `dataset/` directory contains 600 serverless applications. To analyze them in bulk:
+
+### 1. Generate per-language app lists
+
+From the project root, run the helper script that scans each app's `serverless.yml` for its `runtime` field and groups them by language:
+
+```bash
+python scripts/generate_apps_json.py
+```
+
+This produces:
+
+- `apps_javascript.json` — all Node.js / TypeScript apps
+- `apps_python.json` — all Python apps
+- `apps_go.json` — all Go apps
+
+### 2. Run PrivLess for each language
+
+```bash
+cd src
+
+# JavaScript / TypeScript
+python privLess.py --language javascript --apps-json ../apps_javascript.json
+
+# Python
+python privLess.py --language python --apps-json ../apps_python.json
+
+# Go
+python privLess.py --language go --apps-json ../apps_go.json
+```
+
+Each run is resumable by default — if interrupted, re-running the same command picks up where it left off. Use `--force-reprocess` to start fresh.
+
+### 3. Combine results
+
+After all languages have been processed, merge the per-language output into combined files for cross-language analysis:
+
+```bash
+cd ..
+python tools/combine_results.py
+```
+
+The combined files are written to `output/results/` and are ready for use by the analysis notebooks (see [analysis/README.md](../analysis/README.md)).
 
 ## Source Files
 
