@@ -1,6 +1,6 @@
 # PrivLess
 
-**Least-privilege IAM policy generator for serverless applications.**
+**IAM policy analysis Framework for serverless applications.**
 
 PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract the AWS permissions each serverless function actually uses and generates tightly-scoped IAM policies, enabling over-privilege analysis of serverless applications.
 
@@ -11,7 +11,6 @@ PrivLess uses [CodeQL](https://codeql.github.com/) static analysis to extract th
 | JavaScript/TypeScript | Supported |
 | Python                | Supported |
 | Go                    | Supported |
-| C#                    | Supported |
 
 ## Prerequisites
 
