@@ -54,7 +54,7 @@ python tools/default_policy_analyzer/privLess_default_policy_analyzer.py \
 
 | Flag | Description | Default |
 |---|---|---|
-| `--language` | App language (`javascript`, `typescript`, `python`, `go`, `csharp`) | Required |
+| `--language` | App language (`javascript`, `typescript`, `python`, `go`) | Required |
 | `--apps-json` | Path to JSON file listing app directories | Required |
 | `--output-dir` | Output directory for results | `output/results/default_policy_analysis` |
 | `--workers` | Number of concurrent workers | `4` |
