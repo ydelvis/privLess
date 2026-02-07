@@ -34,6 +34,28 @@ try:
 except ImportError:
     TQDM_AVAILABLE = False
 
+# Project root: tools/default_policy_analyzer/ -> tools/ -> project_root/
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_SCRIPT_DIR))
+
+
+def _get_results_dir() -> str:
+    """Resolve the results output directory from config.yaml."""
+    config_path = os.path.join(_PROJECT_ROOT, "config.yaml")
+    output_dir = "output"
+    results_subdir = "results"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.safe_load(f) or {}
+            output_dir = cfg.get("output", {}).get("dir", output_dir)
+            results_subdir = cfg.get("output", {}).get("results_subdir", results_subdir)
+        except Exception:
+            pass
+    if not os.path.isabs(output_dir):
+        output_dir = os.path.join(_PROJECT_ROOT, output_dir)
+    return os.path.join(output_dir, results_subdir)
+
 
 class DefaultPolicyAnalyzer:
     """
@@ -86,30 +108,30 @@ class DefaultPolicyAnalyzer:
         Args:
             language: Programming language of the apps (javascript, python, go, etc.)
             apps_json_path: Path to JSON file containing list of app paths
-            output_dir: Output directory for results (default: ./privless_output)
+            output_dir: Output directory for results (default: <output>/results/default_policy_analysis)
         """
         self.language_key = language
         self.apps_json_path = apps_json_path
         self.language = self.LANGUAGE_MAP.get(language, "javascript-typescript")
 
-        # Output directory structure
+        # Output directory structure — flat, no language-specific subfolders
         if output_dir is None:
-            output_dir = os.path.join(os.getcwd(), "privless_output")
+            output_dir = os.path.join(_get_results_dir(), "default_policy_analysis")
 
         self.output_dir = output_dir
-        self.results_path = os.path.join(self.output_dir, "default_policy_analysis")
+        self.results_path = self.output_dir
 
-        # Stats tracking
+        # Stats tracking (flat directory, language only in filename)
         self.stats_output_path = os.path.join(
-            self.results_path, self.language_key, "default_policy_stats.jsonl"
+            self.results_path, f"default_policy_stats_{self.language_key}.jsonl"
         )
 
         # Create necessary directories
-        os.makedirs(os.path.dirname(self.stats_output_path), exist_ok=True)
+        os.makedirs(self.results_path, exist_ok=True)
 
         # State file for resume capability
         self.state_file = os.path.join(
-            self.results_path, 'stats', self.language_key, "processing_state.json"
+            self.results_path, f"processing_state_{self.language_key}.json"
         )
 
         # Load IAM permission data for accurate wildcard counting
@@ -124,8 +146,10 @@ class DefaultPolicyAnalyzer:
         - iam_service_actions.json: Full action details for prefix matching
         """
         # Determine data directory (relative to this script's location)
+        # Script is at tools/default_policy_analyzer/ -> tools/ -> project_root/
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        data_dir = os.path.join(os.path.dirname(script_dir), 'data')
+        project_root = os.path.dirname(os.path.dirname(script_dir))
+        data_dir = os.path.join(project_root, 'data')
 
         self.permission_counts = {}  # service -> count
         self.service_actions = {}    # service -> {action_name: [permissions]}
@@ -1622,16 +1646,16 @@ class DefaultPolicyAnalyzer:
             epilog="""
 Examples:
   # Analyze Python serverless apps
-  python privLess_default_policy_analyzer.py --language python --apps-json apps/python_apps.json
+  python tools/default_policy_analyzer/privLess_default_policy_analyzer.py --language python --apps-json apps/python_apps.json
 
   # Analyze with custom output directory
-  python privLess_default_policy_analyzer.py --language javascript --apps-json apps/js_apps.json --output-dir ./output
+  python tools/default_policy_analyzer/privLess_default_policy_analyzer.py --language javascript --apps-json apps/js_apps.json --output-dir ./output
 
   # Force reprocess all apps
-  python privLess_default_policy_analyzer.py --language go --apps-json apps/go_apps.json --force-reprocess
+  python tools/default_policy_analyzer/privLess_default_policy_analyzer.py --language go --apps-json apps/go_apps.json --force-reprocess
 
   # Run with multiple workers
-  python privLess_default_policy_analyzer.py --language python --apps-json apps.json --workers 8
+  python tools/default_policy_analyzer/privLess_default_policy_analyzer.py --language python --apps-json apps.json --workers 8
             """
         )
 
@@ -1649,7 +1673,7 @@ Examples:
         parser.add_argument(
             "--output-dir",
             default=None,
-            help="Output directory for results (default: ./privless_output)"
+            help="Output directory for results (default: <output>/results/default_policy_analysis)"
         )
         parser.add_argument(
             "--workers",

@@ -24,6 +24,28 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
+# Project root: tools/permission_classifier/ -> tools/ -> project_root/
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_SCRIPT_DIR))
+
+
+def _get_results_dir() -> str:
+    """Resolve the results output directory from config.yaml."""
+    config_path = os.path.join(_PROJECT_ROOT, "config.yaml")
+    output_dir = "output"
+    results_subdir = "results"
+    if YAML_AVAILABLE and os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.safe_load(f) or {}
+            output_dir = cfg.get("output", {}).get("dir", output_dir)
+            results_subdir = cfg.get("output", {}).get("results_subdir", results_subdir)
+        except Exception:
+            pass
+    if not os.path.isabs(output_dir):
+        output_dir = os.path.join(_PROJECT_ROOT, output_dir)
+    return os.path.join(output_dir, results_subdir)
+
 
 class AWSPermissionClassifier:
     """
@@ -799,6 +821,8 @@ class AWSPermissionClassifier:
         # Create header
         fieldnames = ['app_name', 'app_path', 'total_permissions'] + categories
 
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
         with open(output_path, 'w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
@@ -829,13 +853,13 @@ if __name__ == '__main__':
         epilog="""
 Examples:
   # Run basic tests
-  python permission_classifier.py
+  python tools/permission_classifier/permission_classifier.py
 
   # Process apps from combined.json
-  python permission_classifier.py --apps-json ../../apps/dataset/combined.json --output results.csv
+  python tools/permission_classifier/permission_classifier.py --apps-json apps/dataset/combined.json --output results.csv
 
   # Process apps with custom output path
-  python permission_classifier.py --apps-json /path/to/apps.json --output /path/to/output.csv
+  python tools/permission_classifier/permission_classifier.py --apps-json /path/to/apps.json --output /path/to/output.csv
         """
     )
 
@@ -843,10 +867,13 @@ Examples:
         "--apps-json",
         help="Path to JSON file containing list of app paths to process"
     )
+    default_output = os.path.join(
+        _get_results_dir(), "permission_classifications", "permission_classifications.csv"
+    )
     parser.add_argument(
         "--output",
-        default="permission_classifications.csv",
-        help="Output CSV file path (default: permission_classifications.csv)"
+        default=default_output,
+        help=f"Output CSV file path (default: <output>/results/permission_classifications/permission_classifications.csv)"
     )
     parser.add_argument(
         "--test",
