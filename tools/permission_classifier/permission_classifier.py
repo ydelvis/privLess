@@ -155,7 +155,7 @@ class AWSPermissionClassifier:
             iam_actions_path: Path to iam_service_actions.json file
         """
         if iam_actions_path is None:
-            # Look for data file relative to this script (src/utils -> src -> project_root -> data)
+            # Look for data file relative to this script (tools/permission_classifier/ -> tools/ -> project_root -> data)
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(os.path.dirname(script_dir))
             iam_actions_path = os.path.join(project_root, 'data', 'iam_service_actions.json')

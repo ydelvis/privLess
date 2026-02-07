@@ -68,7 +68,6 @@ class DefaultPolicyAnalyzer:
         "typescript": "javascript-typescript",
         "python": "python",
         "go": "go",
-        "csharp": "csharp",
     }
 
     # Known AWS service prefixes from IAM actions
